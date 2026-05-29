@@ -1,5 +1,7 @@
+import json
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from typing import Any
 
 import httpx
 from fastapi import HTTPException, status
@@ -10,6 +12,14 @@ from app.core.config import settings
 @dataclass(frozen=True)
 class DeepSeekCompletion:
     content: str
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    finish_reason: str | None
+
+
+@dataclass(frozen=True)
+class DeepSeekJsonCompletion:
+    data: dict[str, Any]
     prompt_tokens: int | None
     completion_tokens: int | None
     finish_reason: str | None
@@ -31,7 +41,6 @@ class DeepSeekProvider:
 
     @staticmethod
     async def ensure_credit_available() -> None:
-        # Disabled during prototype development to avoid blocking tutor requests.
         if not settings.deepseek_balance_check_enabled:
             return
 
@@ -71,57 +80,44 @@ class DeepSeekProvider:
                 detail="Token finished",
             )
 
-        selected_currency = settings.deepseek_balance_currency.upper()
+        requested_currency = settings.deepseek_balance_currency.upper()
 
-        balance_item = next(
+        balance_info = next(
             (
                 item
                 for item in data.get("balance_infos", [])
-                if str(item.get("currency", "")).upper() == selected_currency
+                if str(item.get("currency", "")).upper() == requested_currency
             ),
             None,
         )
 
-        if balance_item is None:
+        if balance_info is None:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"DeepSeek balance is not available in {selected_currency}",
+                detail=f"DeepSeek balance is not available in {requested_currency}",
             )
 
         try:
-            balance = Decimal(str(balance_item["total_balance"]))
-            minimum_balance = Decimal(str(settings.deepseek_min_balance))
+            available_balance = Decimal(str(balance_info["total_balance"]))
+            required_balance = Decimal(str(settings.deepseek_min_balance))
         except (InvalidOperation, KeyError, TypeError) as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Invalid balance response from DeepSeek",
             ) from exc
 
-        if balance <= minimum_balance:
+        if available_balance <= required_balance:
             raise HTTPException(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
                 detail="Token finished",
             )
 
     @staticmethod
-    async def complete(
-        messages: list[dict[str, str]],
-        max_tokens: int,
-        temperature: float,
-    ) -> DeepSeekCompletion:
+    async def _post_completion(payload: dict[str, Any]) -> dict[str, Any]:
         timeout = httpx.Timeout(
             settings.deepseek_request_timeout_seconds,
             connect=10.0,
         )
-
-        payload = {
-            "model": settings.deepseek_model,
-            "messages": messages,
-            "thinking": {"type": "disabled"},
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": False,
-        }
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
@@ -147,7 +143,24 @@ class DeepSeekProvider:
                 detail=f"DeepSeek generation failed: {response.text}",
             )
 
-        data = response.json()
+        return response.json()
+
+    @staticmethod
+    async def complete(
+        messages: list[dict[str, str]],
+        max_tokens: int,
+        temperature: float,
+    ) -> DeepSeekCompletion:
+        payload = {
+            "model": settings.deepseek_model,
+            "messages": messages,
+            "thinking": {"type": "disabled"},
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": False,
+        }
+
+        data = await DeepSeekProvider._post_completion(payload)
 
         try:
             choice = data["choices"][0]
@@ -168,6 +181,62 @@ class DeepSeekProvider:
 
         return DeepSeekCompletion(
             content=str(content).strip(),
+            prompt_tokens=usage.get("prompt_tokens"),
+            completion_tokens=usage.get("completion_tokens"),
+            finish_reason=finish_reason,
+        )
+
+    @staticmethod
+    async def complete_json(
+        messages: list[dict[str, str]],
+        max_tokens: int,
+        temperature: float = 0.2,
+    ) -> DeepSeekJsonCompletion:
+        payload = {
+            "model": settings.deepseek_model,
+            "messages": messages,
+            "thinking": {"type": "disabled"},
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "response_format": {"type": "json_object"},
+            "stream": False,
+        }
+
+        data = await DeepSeekProvider._post_completion(payload)
+
+        try:
+            choice = data["choices"][0]
+            content = choice["message"]["content"]
+            finish_reason = choice.get("finish_reason")
+            usage = data.get("usage", {})
+        except (KeyError, IndexError, TypeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Invalid JSON response from DeepSeek API",
+            ) from exc
+
+        if finish_reason == "length":
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="DeepSeek JSON output was cut off. Increase diagnostic token limit.",
+            )
+
+        try:
+            parsed_data = json.loads(content)
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="DeepSeek did not return valid JSON",
+            ) from exc
+
+        if not isinstance(parsed_data, dict):
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="DeepSeek JSON output must be an object",
+            )
+
+        return DeepSeekJsonCompletion(
+            data=parsed_data,
             prompt_tokens=usage.get("prompt_tokens"),
             completion_tokens=usage.get("completion_tokens"),
             finish_reason=finish_reason,

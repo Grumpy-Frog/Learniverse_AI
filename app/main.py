@@ -8,6 +8,7 @@ from app.modules.simulation.router import router as simulation_router
 from app.modules.documents.router import router as documents_router
 from app.modules.tutor.router import router as tutor_router
 from app.modules.rag.router import router as rag_router
+from app.modules.diagnostics.router import router as diagnostics_router
 
 app = FastAPI(
     title=settings.app_name,
@@ -69,3 +70,7 @@ app.include_router(
     prefix=settings.api_prefix,
 )
 
+app.include_router(
+    diagnostics_router,
+    prefix=settings.api_prefix,
+)

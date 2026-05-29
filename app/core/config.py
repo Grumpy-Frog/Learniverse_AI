@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     deepseek_balance_check_enabled: bool = True
     deepseek_request_timeout_seconds: float = 45.0
 
+    diagnostic_quiz_output_tokens: int = 1800
+    diagnostic_evaluation_output_tokens: int = 350
+    diagnostic_pass_percentage: float = 80.0
+
     storage_dir: str = "storage/documents"
 
     model_config = SettingsConfigDict(
