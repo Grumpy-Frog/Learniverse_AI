@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.modules.auth.router import router as auth_router
+from app.modules.catalog.router import router as catalog_router
 
 
 app = FastAPI(
@@ -27,5 +28,10 @@ def health_check() -> dict[str, str]:
 
 app.include_router(
     auth_router,
+    prefix=settings.api_prefix,
+)
+
+app.include_router(
+    catalog_router,
     prefix=settings.api_prefix,
 )
