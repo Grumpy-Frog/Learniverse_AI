@@ -53,12 +53,13 @@ app.include_router(
     prefix=settings.api_prefix,
 )
 
+
 app.include_router(
-    documents_router,
+    tutor_router,
     prefix=settings.api_prefix,
 )
 
 app.include_router(
-    tutor_router,
+    documents_router,
     prefix=settings.api_prefix,
 )

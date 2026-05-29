@@ -31,12 +31,26 @@ class DeepSeekProvider:
 
     @staticmethod
     async def ensure_credit_available() -> None:
+        # Disabled during prototype development to avoid blocking tutor requests.
+        if not settings.deepseek_balance_check_enabled:
+            return
+
+        timeout = httpx.Timeout(
+            settings.deepseek_request_timeout_seconds,
+            connect=10.0,
+        )
+
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.get(
                     f"{settings.deepseek_base_url.rstrip('/')}/user/balance",
                     headers=DeepSeekProvider._headers(),
                 )
+        except httpx.TimeoutException as exc:
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="DeepSeek balance check timed out",
+            ) from exc
         except httpx.RequestError as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -95,6 +109,11 @@ class DeepSeekProvider:
         max_tokens: int,
         temperature: float,
     ) -> DeepSeekCompletion:
+        timeout = httpx.Timeout(
+            settings.deepseek_request_timeout_seconds,
+            connect=10.0,
+        )
+
         payload = {
             "model": settings.deepseek_model,
             "messages": messages,
@@ -105,12 +124,17 @@ class DeepSeekProvider:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=90.0) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(
                     f"{settings.deepseek_base_url.rstrip('/')}/chat/completions",
                     headers=DeepSeekProvider._headers(),
                     json=payload,
                 )
+        except httpx.TimeoutException as exc:
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="DeepSeek response timed out",
+            ) from exc
         except httpx.RequestError as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -120,7 +144,7 @@ class DeepSeekProvider:
         if response.status_code >= 400:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="DeepSeek generation request failed",
+                detail=f"DeepSeek generation failed: {response.text}",
             )
 
         data = response.json()

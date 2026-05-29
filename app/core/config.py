@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     tutor_scope_check_max_tokens: int = 5
     deepseek_min_balance: float = 2.00
     deepseek_balance_currency: str = "USD"
+    deepseek_balance_check_enabled: bool = False
+    deepseek_request_timeout_seconds: float = 45.0
 
     storage_dir: str = "storage/documents"
 
