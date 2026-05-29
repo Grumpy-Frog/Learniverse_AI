@@ -12,7 +12,7 @@ from app.db.base import Base
 from app.modules.auth.model import User
 
 from app.modules.catalog.model import Chapter, GradeLevel, Subject, Topic
-
+from app.modules.simulation.router import router as simulation_router
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
