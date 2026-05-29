@@ -5,6 +5,9 @@ from app.core.config import settings
 from app.modules.auth.router import router as auth_router
 from app.modules.catalog.router import router as catalog_router
 from app.modules.simulation.router import router as simulation_router
+from app.modules.documents.router import router as documents_router
+from app.modules.tutor.router import router as tutor_router
+
 
 app = FastAPI(
     title=settings.app_name,
@@ -38,5 +41,15 @@ app.include_router(
 
 app.include_router(
     simulation_router,
+    prefix=settings.api_prefix,
+)
+
+app.include_router(
+    documents_router,
+    prefix=settings.api_prefix,
+)
+
+app.include_router(
+    tutor_router,
     prefix=settings.api_prefix,
 )

@@ -11,9 +11,24 @@ class Settings(BaseSettings):
 
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 1000
+    access_token_expire_minutes: int = 30
 
     frontend_origin: str = "http://localhost:3000"
+
+    # Keep this harmless setting even if documents are not built yet.
+    storage_dir: str = "storage/documents"
+
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-v4-flash"
+
+    tutor_max_output_tokens: int = 1500
+    tutor_scope_check_max_tokens: int = 5
+
+    deepseek_min_balance: float = 2.00
+    deepseek_balance_currency: str = "USD"
+
+    storage_dir: str = "storage/documents"
 
     model_config = SettingsConfigDict(
         env_file=".env",
