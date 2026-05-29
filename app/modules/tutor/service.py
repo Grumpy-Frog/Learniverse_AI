@@ -7,11 +7,15 @@ from app.core.config import settings
 from app.modules.auth.model import User
 from app.modules.catalog.model import Topic
 from app.modules.catalog.repository import CatalogRepository
-from app.modules.tutor.deepseek_provider import DeepSeekCompletion, DeepSeekProvider
+from app.modules.rag.model import DocumentChunk
+from app.modules.rag.service import RagService
+from app.modules.tutor.deepseek_provider import DeepSeekProvider
 from app.modules.tutor.model import TutorConversation, TutorMessage
 from app.modules.tutor.prompts import (
     chat_system_prompt,
+    format_rag_context,
     get_topic_context,
+    no_rag_context_reply,
     out_of_scope_reply,
     scope_check_messages,
     story_messages,
@@ -59,17 +63,6 @@ class TutorService:
         return conversation
 
     @staticmethod
-    def _require_rag_off_for_now(conversation: TutorConversation) -> None:
-        if conversation.use_rag:
-            raise HTTPException(
-                status_code=status.HTTP_501_NOT_IMPLEMENTED,
-                detail=(
-                    "RAG is enabled but not implemented yet. "
-                    "Turn it off to use the tutor now."
-                ),
-            )
-
-    @staticmethod
     def _add_token_values(
         first: int | None,
         second: int | None,
@@ -80,13 +73,30 @@ class TutorService:
         return (first or 0) + (second or 0)
 
     @staticmethod
+    def _sources_from_chunks(
+        chunks: list[DocumentChunk],
+    ) -> list[dict]:
+        return [
+            {
+                "document_id": chunk.document_id,
+                "page_start": chunk.page_start,
+                "page_end": chunk.page_end,
+                "content_preview": (
+                    chunk.content[:180] + "..."
+                    if len(chunk.content) > 180
+                    else chunk.content
+                ),
+            }
+            for chunk in chunks
+        ]
+
+    @staticmethod
     def create_conversation(
         db: Session,
         payload: ConversationCreateRequest,
         current_user: User,
     ) -> TutorConversation:
         topic = TutorService._get_active_topic(db, payload.topic_id)
-
         _, subject_name, chapter_title, topic_title = get_topic_context(topic)
 
         conversation = TutorConversation(
@@ -136,16 +146,39 @@ class TutorService:
         conversation_id: uuid.UUID,
         payload: StoryGenerateRequest,
         current_user: User,
-    ) -> tuple[TutorConversation, TutorMessage]:
+    ) -> tuple[TutorConversation, TutorMessage, list[dict]]:
         conversation = TutorService._get_user_conversation(
             db,
             conversation_id,
             current_user,
         )
 
-        TutorService._require_rag_off_for_now(conversation)
+        topic = TutorService._get_active_topic(
+            db,
+            conversation.topic_id,
+        )
 
-        topic = TutorService._get_active_topic(db, conversation.topic_id)
+        retrieved_chunks: list[DocumentChunk] = []
+        rag_context: str | None = None
+
+        if conversation.use_rag:
+            retrieved_chunks = RagService.get_story_context_for_tutor(
+                db=db,
+                topic_id=conversation.topic_id,
+                language=conversation.language,
+                limit=4,
+            )
+
+            if not retrieved_chunks:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "No RAG chunks are available for this topic and language. "
+                        "Build chunks or turn off RAG."
+                    ),
+                )
+
+            rag_context = format_rag_context(retrieved_chunks)
 
         await DeepSeekProvider.ensure_credit_available()
 
@@ -154,6 +187,7 @@ class TutorService:
                 topic=topic,
                 language=conversation.language,
                 student_preference=payload.student_preference,
+                rag_context=rag_context,
             ),
             max_tokens=settings.tutor_max_output_tokens,
             temperature=0.7,
@@ -165,7 +199,7 @@ class TutorService:
             message_type="story",
             content=result.content,
             is_in_scope=True,
-            is_source_grounded=False,
+            is_source_grounded=conversation.use_rag,
             prompt_tokens=result.prompt_tokens,
             completion_tokens=result.completion_tokens,
             finish_reason=result.finish_reason,
@@ -177,7 +211,11 @@ class TutorService:
             reply,
         )
 
-        return conversation, reply
+        return (
+            conversation,
+            reply,
+            TutorService._sources_from_chunks(retrieved_chunks),
+        )
 
     @staticmethod
     async def send_chat_message(
@@ -185,16 +223,18 @@ class TutorService:
         conversation_id: uuid.UUID,
         payload: ChatMessageRequest,
         current_user: User,
-    ) -> tuple[TutorConversation, TutorMessage]:
+    ) -> tuple[TutorConversation, TutorMessage, list[dict]]:
         conversation = TutorService._get_user_conversation(
             db,
             conversation_id,
             current_user,
         )
 
-        TutorService._require_rag_off_for_now(conversation)
+        topic = TutorService._get_active_topic(
+            db,
+            conversation.topic_id,
+        )
 
-        topic = TutorService._get_active_topic(db, conversation.topic_id)
         _, _, chapter_title, _ = get_topic_context(topic)
 
         previous_messages = TutorRepository.list_recent_messages(
@@ -253,7 +293,50 @@ class TutorService:
                 refusal,
             )
 
-            return conversation, refusal
+            return conversation, refusal, []
+
+        retrieved_chunks: list[DocumentChunk] = []
+        rag_context: str | None = None
+
+        if conversation.use_rag:
+            retrieved_chunks = RagService.retrieve_context_for_tutor(
+                db=db,
+                topic_id=conversation.topic_id,
+                language=conversation.language,
+                query=payload.message,
+                limit=4,
+            )
+
+            if not retrieved_chunks:
+                TutorRepository.add_message(
+                    db,
+                    conversation,
+                    user_message,
+                )
+
+                no_context_message = TutorMessage(
+                    conversation_id=conversation.id,
+                    role="assistant",
+                    message_type="refusal",
+                    content=no_rag_context_reply(
+                        conversation.language,
+                    ),
+                    is_in_scope=True,
+                    is_source_grounded=False,
+                    prompt_tokens=scope_result.prompt_tokens,
+                    completion_tokens=scope_result.completion_tokens,
+                    finish_reason=scope_result.finish_reason,
+                )
+
+                no_context_message = TutorRepository.add_message(
+                    db,
+                    conversation,
+                    no_context_message,
+                )
+
+                return conversation, no_context_message, []
+
+            rag_context = format_rag_context(retrieved_chunks)
 
         api_messages: list[dict[str, str]] = [
             {
@@ -261,6 +344,7 @@ class TutorService:
                 "content": chat_system_prompt(
                     topic=topic,
                     language=conversation.language,
+                    rag_context=rag_context,
                 ),
             }
         ]
@@ -298,7 +382,7 @@ class TutorService:
             message_type="chat",
             content=answer_result.content,
             is_in_scope=True,
-            is_source_grounded=False,
+            is_source_grounded=conversation.use_rag,
             prompt_tokens=TutorService._add_token_values(
                 scope_result.prompt_tokens,
                 answer_result.prompt_tokens,
@@ -316,7 +400,11 @@ class TutorService:
             reply,
         )
 
-        return conversation, reply
+        return (
+            conversation,
+            reply,
+            TutorService._sources_from_chunks(retrieved_chunks),
+        )
 
     @staticmethod
     def list_messages(

@@ -64,7 +64,15 @@ class TutorMessageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TutorSourceResponse(BaseModel):
+    document_id: uuid.UUID
+    page_start: int
+    page_end: int
+    content_preview: str
+
+
 class TutorTurnResponse(BaseModel):
     conversation: TutorConversationResponse
     reply: TutorMessageResponse
+    sources: list[TutorSourceResponse] = Field(default_factory=list)
     note: str

@@ -26,10 +26,17 @@ router = APIRouter(
 )
 
 
-NOT_GROUNDED_NOTE = (
-    "AI-generated explanation. "
-    "Textbook-grounded RAG verification is not implemented yet."
-)
+def response_note(is_source_grounded: bool) -> str:
+    if is_source_grounded:
+        return (
+            "This response was generated using retrieved approved "
+            "textbook chunks for the selected topic."
+        )
+
+    return (
+        "AI-generated explanation. "
+        "Textbook-grounded RAG was not used for this response."
+    )
 
 
 @router.post(
@@ -92,7 +99,7 @@ async def generate_story(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> TutorTurnResponse:
-    conversation, reply = await TutorService.generate_story(
+    conversation, reply, sources = await TutorService.generate_story(
         db,
         conversation_id,
         payload,
@@ -102,7 +109,8 @@ async def generate_story(
     return TutorTurnResponse(
         conversation=conversation,
         reply=reply,
-        note=NOT_GROUNDED_NOTE,
+        sources=sources,
+        note=response_note(reply.is_source_grounded),
     )
 
 
@@ -116,7 +124,7 @@ async def send_chat_message(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> TutorTurnResponse:
-    conversation, reply = await TutorService.send_chat_message(
+    conversation, reply, sources = await TutorService.send_chat_message(
         db,
         conversation_id,
         payload,
@@ -126,7 +134,8 @@ async def send_chat_message(
     return TutorTurnResponse(
         conversation=conversation,
         reply=reply,
-        note=NOT_GROUNDED_NOTE,
+        sources=sources,
+        note=response_note(reply.is_source_grounded),
     )
 
 
