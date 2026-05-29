@@ -24,7 +24,6 @@ class Settings(BaseSettings):
 
     tutor_max_output_tokens: int = 1500
     tutor_scope_check_max_tokens: int = 5
-
     deepseek_min_balance: float = 2.00
     deepseek_balance_currency: str = "USD"
 
