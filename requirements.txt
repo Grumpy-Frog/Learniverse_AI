@@ -10,3 +10,4 @@ PyJWT
 python-multipart
 pymupdf
 httpx
+psycopg2
