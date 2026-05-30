@@ -245,14 +245,20 @@ class TutorService:
 
         await DeepSeekProvider.ensure_credit_available()
 
-        scope_result = await DeepSeekProvider.complete(
-            messages=scope_check_messages(
-                topic=topic,
-                student_message=payload.message,
-            ),
-            max_tokens=settings.tutor_scope_check_max_tokens,
-            temperature=0.0,
-        )
+        if TutorService._is_obviously_out_of_scope(payload.message):
+            is_in_scope = False
+            scope_result = None
+        else:
+            scope_result = await DeepSeekProvider.complete(
+                messages=scope_check_messages(
+                    topic=topic,
+                    student_message=payload.message,
+                ),
+                max_tokens=settings.tutor_scope_check_max_tokens,
+                temperature=0.0,
+            )
+
+            is_in_scope = scope_result.content.strip().upper() == "YES"
 
         is_in_scope = scope_result.content.strip().upper().startswith("YES")
 
@@ -282,9 +288,9 @@ class TutorService:
                 ),
                 is_in_scope=False,
                 is_source_grounded=False,
-                prompt_tokens=scope_result.prompt_tokens,
-                completion_tokens=scope_result.completion_tokens,
-                finish_reason=scope_result.finish_reason,
+                prompt_tokens=scope_result.prompt_tokens if scope_result else None,
+                completion_tokens=scope_result.completion_tokens if scope_result else None,
+                finish_reason=scope_result.finish_reason if scope_result else "blocked",
             )
 
             refusal = TutorRepository.add_message(
@@ -422,3 +428,32 @@ class TutorService:
             db,
             conversation.id,
         )
+    
+    @staticmethod
+    def _is_obviously_out_of_scope(message: str) -> bool:
+        text = message.lower()
+
+        blocked_keywords = [
+            "c++",
+            "java",
+            "python",
+            "javascript",
+            "html",
+            "css",
+            "react",
+            "next.js",
+            "programming",
+            "coding",
+            "football",
+            "cricket",
+            "messi",
+            "ronaldo",
+            "movie",
+            "song",
+            "politics",
+            "election",
+            "president",
+            "game cheat",
+        ]
+
+        return any(keyword in text for keyword in blocked_keywords)

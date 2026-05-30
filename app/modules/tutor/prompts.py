@@ -25,14 +25,13 @@ def language_rule(language: str) -> str:
 def out_of_scope_reply(chapter_title: str, language: str) -> str:
     if language == "bn":
         return (
-            f"এই প্রশ্নটি আপনার নির্বাচিত {chapter_title} অধ্যায়ের বাইরে। "
-            "অনুগ্রহ করে এই অধ্যায়ের সাথে সম্পর্কিত প্রশ্ন করুন অথবা অন্য অধ্যায় নির্বাচন করুন।"
+            "এই প্রশ্নটি আপনার নির্বাচিত বিষয় বা অধ্যায়ের বাইরে। "
+            "অনুগ্রহ করে নির্বাচিত বিষয়, অধ্যায় বা টপিক সম্পর্কিত প্রশ্ন করুন।"
         )
 
     return (
-        "This question is outside your selected chapter. "
-        f"Please ask something related to {chapter_title} "
-        "or choose another chapter first."
+        "This question is outside your selected subject or topic. "
+        "Please ask something related to your selected learning content."
     )
 
 
@@ -72,24 +71,48 @@ def scope_check_messages(
     return [
         {
             "role": "system",
-            "content": (
-                "You are a strict educational scope classifier. "
-                "Reply with exactly YES or NO only."
-            ),
+            "content": """
+You are a strict scope classifier for an educational tutor.
+
+You must reply with exactly one word only:
+YES
+or
+NO
+
+Do not explain.
+Do not add punctuation.
+""".strip(),
         },
         {
             "role": "user",
             "content": f"""
-Selected learning scope:
+Selected learning context:
 - Grade: {grade_name}
 - Subject: {subject_name}
 - Chapter: {chapter_title}
-- Current topic: {topic_title}
+- Topic: {topic_title}
 
 Student question:
 {student_message}
 
-Is this question relevant to the selected subject and chapter, including helpful questions about the current topic?
+Decision rules:
+Reply YES only if the question is related to the selected subject, chapter, or topic.
+
+Reply YES for:
+- questions about {subject_name}
+- questions about {chapter_title}
+- questions about {topic_title}
+- prerequisite concepts needed to understand this selected topic
+- formulas, units, examples, graphs, numerical problems, or real-life applications related to the selected subject
+
+Reply NO for:
+- programming questions such as C, C++, Java, Python, HTML, CSS, React
+- sports, entertainment, politics, history, religion, lifestyle, random general knowledge
+- questions from another subject
+- requests unrelated to school-level {subject_name}
+- personal, romantic, unsafe, or non-educational requests
+
+Is the student question inside the selected subject/topic scope?
 
 Reply exactly:
 YES

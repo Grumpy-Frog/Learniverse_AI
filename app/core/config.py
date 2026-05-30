@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     diagnostic_evaluation_output_tokens: int = 350
     diagnostic_pass_percentage: float = 80.0
 
+    remediation_generation_output_tokens: int = 1400
+    remediation_evaluation_output_tokens: int = 400
+    remediation_pass_score: float = 0.7
+
+    blog_validation_output_tokens: int = 300
+    blog_generation_output_tokens: int = 2500
+
     storage_dir: str = "storage/documents"
 
     model_config = SettingsConfigDict(

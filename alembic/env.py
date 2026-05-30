@@ -22,6 +22,14 @@ from app.modules.diagnostics.model import (
     DiagnosticSession,
     UserTopicStatus,
 )
+from app.modules.remediation.model import (
+    RemediationContent,
+    RemediationRecheck,
+    RemediationSession,
+)
+from app.modules.blog.model import BlogPost
+
+
 
 
 # this is the Alembic Config object, which provides
