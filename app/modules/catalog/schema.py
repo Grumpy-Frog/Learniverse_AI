@@ -1,4 +1,3 @@
-
 import uuid
 from datetime import datetime
 
@@ -80,28 +79,8 @@ class ChapterResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class TopicCreateRequest(BaseModel):
-    title: str = Field(min_length=2, max_length=200)
-    slug: str = Field(
-        min_length=2,
-        max_length=150,
-        pattern=SLUG_PATTERN,
-    )
-    description: str | None = Field(default=None, max_length=1000)
-    learning_objective: str | None = Field(default=None, max_length=2000)
-    display_order: int = Field(default=1, ge=1)
-    is_active: bool = True
-
-
-class TopicResponse(BaseModel):
-    id: uuid.UUID
-    chapter_id: uuid.UUID
-    title: str
-    slug: str
-    description: str | None
-    learning_objective: str | None
-    display_order: int
-    is_active: bool
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
+class DeleteCatalogResponse(BaseModel):
+    deleted_id: uuid.UUID
+    item_type: str
+    soft_deleted: bool
+    message: str

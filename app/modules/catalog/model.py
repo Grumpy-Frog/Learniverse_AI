@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import uuid
 from datetime import datetime
 
@@ -22,6 +20,10 @@ from app.db.base import Base
 class GradeLevel(Base):
     __tablename__ = "grade_levels"
 
+    __table_args__ = (
+        UniqueConstraint("slug", name="uq_grade_level_slug"),
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
@@ -35,9 +37,8 @@ class GradeLevel(Base):
 
     slug: Mapped[str] = mapped_column(
         String(100),
-        unique=True,
-        index=True,
         nullable=False,
+        index=True,
     )
 
     display_order: Mapped[int] = mapped_column(
@@ -58,7 +59,8 @@ class GradeLevel(Base):
         nullable=False,
     )
 
-    subjects: Mapped[list[Subject]] = relationship(
+    subjects: Mapped[list["Subject"]] = relationship(
+        "Subject",
         back_populates="grade_level",
         cascade="all, delete-orphan",
     )
@@ -120,11 +122,13 @@ class Subject(Base):
         nullable=False,
     )
 
-    grade_level: Mapped[GradeLevel] = relationship(
+    grade_level: Mapped["GradeLevel"] = relationship(
+        "GradeLevel",
         back_populates="subjects",
     )
 
-    chapters: Mapped[list[Chapter]] = relationship(
+    chapters: Mapped[list["Chapter"]] = relationship(
+        "Chapter",
         back_populates="subject",
         cascade="all, delete-orphan",
     )
@@ -138,6 +142,11 @@ class Chapter(Base):
             "subject_id",
             "slug",
             name="uq_chapter_subject_slug",
+        ),
+        UniqueConstraint(
+            "subject_id",
+            "chapter_no",
+            name="uq_chapter_subject_chapter_no",
         ),
     )
 
@@ -185,77 +194,7 @@ class Chapter(Base):
         nullable=False,
     )
 
-    subject: Mapped[Subject] = relationship(
+    subject: Mapped["Subject"] = relationship(
+        "Subject",
         back_populates="chapters",
-    )
-
-    topics: Mapped[list[Topic]] = relationship(
-        back_populates="chapter",
-        cascade="all, delete-orphan",
-    )
-
-
-class Topic(Base):
-    __tablename__ = "topics"
-
-    __table_args__ = (
-        UniqueConstraint(
-            "chapter_id",
-            "slug",
-            name="uq_topic_chapter_slug",
-        ),
-    )
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        primary_key=True,
-        default=uuid.uuid4,
-    )
-
-    chapter_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("chapters.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    title: Mapped[str] = mapped_column(
-        String(200),
-        nullable=False,
-    )
-
-    slug: Mapped[str] = mapped_column(
-        String(150),
-        nullable=False,
-    )
-
-    description: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-    )
-
-    learning_objective: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-    )
-
-    display_order: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        default=1,
-    )
-
-    is_active: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=True,
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False,
-    )
-
-    chapter: Mapped[Chapter] = relationship(
-        back_populates="topics",
     )

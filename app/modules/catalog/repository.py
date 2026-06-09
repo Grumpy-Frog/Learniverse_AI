@@ -1,10 +1,9 @@
-
 import uuid
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.catalog.model import Chapter, GradeLevel, Subject, Topic
+from app.modules.catalog.model import Chapter, GradeLevel, Subject
 
 
 class CatalogRepository:
@@ -16,13 +15,28 @@ class CatalogRepository:
         return item
 
     @staticmethod
-    def get_grade_by_id(db: Session, grade_id: uuid.UUID) -> GradeLevel | None:
+    def soft_delete(db: Session, item):
+        item.is_active = False
+        db.commit()
+        db.refresh(item)
+        return item
+
+    @staticmethod
+    def get_grade_by_id(
+        db: Session,
+        grade_id: uuid.UUID,
+    ) -> GradeLevel | None:
         return db.get(GradeLevel, grade_id)
 
     @staticmethod
-    def get_grade_by_slug(db: Session, slug: str) -> GradeLevel | None:
+    def get_grade_by_slug(
+        db: Session,
+        slug: str,
+    ) -> GradeLevel | None:
         return db.scalar(
-            select(GradeLevel).where(GradeLevel.slug == slug)
+            select(GradeLevel).where(
+                GradeLevel.slug == slug,
+            )
         )
 
     @staticmethod
@@ -31,12 +45,15 @@ class CatalogRepository:
             db.scalars(
                 select(GradeLevel)
                 .where(GradeLevel.is_active.is_(True))
-                .order_by(GradeLevel.display_order)
+                .order_by(GradeLevel.display_order.asc())
             ).all()
         )
 
     @staticmethod
-    def get_subject_by_id(db: Session, subject_id: uuid.UUID) -> Subject | None:
+    def get_subject_by_id(
+        db: Session,
+        subject_id: uuid.UUID,
+    ) -> Subject | None:
         return db.get(Subject, subject_id)
 
     @staticmethod
@@ -53,7 +70,10 @@ class CatalogRepository:
         )
 
     @staticmethod
-    def list_subjects(db: Session, grade_id: uuid.UUID) -> list[Subject]:
+    def list_subjects(
+        db: Session,
+        grade_id: uuid.UUID,
+    ) -> list[Subject]:
         return list(
             db.scalars(
                 select(Subject)
@@ -61,12 +81,15 @@ class CatalogRepository:
                     Subject.grade_level_id == grade_id,
                     Subject.is_active.is_(True),
                 )
-                .order_by(Subject.display_order)
+                .order_by(Subject.display_order.asc())
             ).all()
         )
 
     @staticmethod
-    def get_chapter_by_id(db: Session, chapter_id: uuid.UUID) -> Chapter | None:
+    def get_chapter_by_id(
+        db: Session,
+        chapter_id: uuid.UUID,
+    ) -> Chapter | None:
         return db.get(Chapter, chapter_id)
 
     @staticmethod
@@ -83,7 +106,23 @@ class CatalogRepository:
         )
 
     @staticmethod
-    def list_chapters(db: Session, subject_id: uuid.UUID) -> list[Chapter]:
+    def get_chapter_by_number(
+        db: Session,
+        subject_id: uuid.UUID,
+        chapter_no: int,
+    ) -> Chapter | None:
+        return db.scalar(
+            select(Chapter).where(
+                Chapter.subject_id == subject_id,
+                Chapter.chapter_no == chapter_no,
+            )
+        )
+
+    @staticmethod
+    def list_chapters(
+        db: Session,
+        subject_id: uuid.UUID,
+    ) -> list[Chapter]:
         return list(
             db.scalars(
                 select(Chapter)
@@ -91,36 +130,6 @@ class CatalogRepository:
                     Chapter.subject_id == subject_id,
                     Chapter.is_active.is_(True),
                 )
-                .order_by(Chapter.chapter_no)
-            ).all()
-        )
-
-    @staticmethod
-    def get_topic_by_id(db: Session, topic_id: uuid.UUID) -> Topic | None:
-        return db.get(Topic, topic_id)
-
-    @staticmethod
-    def get_topic_by_slug(
-        db: Session,
-        chapter_id: uuid.UUID,
-        slug: str,
-    ) -> Topic | None:
-        return db.scalar(
-            select(Topic).where(
-                Topic.chapter_id == chapter_id,
-                Topic.slug == slug,
-            )
-        )
-
-    @staticmethod
-    def list_topics(db: Session, chapter_id: uuid.UUID) -> list[Topic]:
-        return list(
-            db.scalars(
-                select(Topic)
-                .where(
-                    Topic.chapter_id == chapter_id,
-                    Topic.is_active.is_(True),
-                )
-                .order_by(Topic.display_order)
+                .order_by(Chapter.chapter_no.asc())
             ).all()
         )
