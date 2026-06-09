@@ -42,6 +42,14 @@ class RemediationRepository:
         )
 
     @staticmethod
+    def delete_session(
+        db: Session,
+        session: RemediationSession,
+    ) -> None:
+        db.delete(session)
+        db.commit()
+
+    @staticmethod
     def get_content(
         db: Session,
         remediation_session_id: uuid.UUID,
@@ -81,17 +89,17 @@ class RemediationRepository:
         return recheck
 
     @staticmethod
-    def list_user_topic_sessions(
+    def list_user_chapter_sessions(
         db: Session,
         user_id: uuid.UUID,
-        topic_id: uuid.UUID,
+        chapter_id: uuid.UUID,
     ) -> list[RemediationSession]:
         return list(
             db.scalars(
                 select(RemediationSession)
                 .where(
                     RemediationSession.user_id == user_id,
-                    RemediationSession.topic_id == topic_id,
+                    RemediationSession.chapter_id == chapter_id,
                 )
                 .order_by(RemediationSession.created_at.desc())
             ).all()

@@ -108,7 +108,10 @@ class RemediationService:
             )
 
         if not evidence_lines:
-            return "No detailed evidence was found, but this weakness was selected from diagnostic results."
+            return (
+                "No detailed evidence was found, but this weakness was selected "
+                "from the chapter quiz result."
+            )
 
         return "\n".join(evidence_lines)
 
@@ -135,6 +138,12 @@ class RemediationService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Diagnostic session must be evaluated before remediation",
+            )
+
+        if diagnostic_session.assessment_type == "understanding_check":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Generate remediation from a chapter quiz, not an understanding check",
             )
 
         answers = DiagnosticsRepository.list_answers(
@@ -168,22 +177,22 @@ class RemediationService:
                 detail="Selected weakness was not found in this diagnostic session",
             )
 
-        topic = CatalogRepository.get_topic_by_id(
+        chapter = CatalogRepository.get_chapter_by_id(
             db,
-            diagnostic_session.topic_id,
+            diagnostic_session.chapter_id,
         )
 
-        if not topic:
+        if not chapter or not chapter.is_active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Topic not found",
+                detail="Chapter not found",
             )
 
         chunks = RagService.get_story_context_for_tutor(
             db=db,
-            topic_id=diagnostic_session.topic_id,
+            chapter_id=diagnostic_session.chapter_id,
             language=payload.language,
-            limit=6,
+            limit=8,
         )
 
         if not chunks:
@@ -202,7 +211,7 @@ class RemediationService:
 
         completion = await DeepSeekProvider.complete_json(
             messages=remediation_generation_messages(
-                topic=topic,
+                chapter=chapter,
                 language=payload.language,
                 weakness_label=selected_weakness,
                 evidence=evidence,
@@ -224,7 +233,7 @@ class RemediationService:
 
         session = RemediationSession(
             user_id=current_user.id,
-            topic_id=diagnostic_session.topic_id,
+            chapter_id=diagnostic_session.chapter_id,
             diagnostic_session_id=diagnostic_session.id,
             weakness_label=selected_weakness,
             language=payload.language,
@@ -337,28 +346,58 @@ class RemediationService:
         )
 
     @staticmethod
-    def list_my_topic_sessions(
+    def list_my_chapter_sessions(
         db: Session,
-        topic_id: uuid.UUID,
+        chapter_id: uuid.UUID,
         current_user: User,
     ) -> dict:
-        topic = CatalogRepository.get_topic_by_id(
+        chapter = CatalogRepository.get_chapter_by_id(
             db,
-            topic_id,
+            chapter_id,
         )
 
-        if not topic:
+        if not chapter or not chapter.is_active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Topic not found",
+                detail="Chapter not found",
             )
 
-        sessions = RemediationRepository.list_user_topic_sessions(
+        sessions = RemediationRepository.list_user_chapter_sessions(
             db,
             current_user.id,
-            topic_id,
+            chapter_id,
         )
 
         return {
             "sessions": sessions,
+        }
+
+    @staticmethod
+    def delete_session(
+        db: Session,
+        remediation_session_id: uuid.UUID,
+        current_user: User,
+    ) -> dict:
+        session = RemediationRepository.get_session_for_user(
+            db,
+            remediation_session_id,
+            current_user.id,
+        )
+
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Remediation session not found",
+            )
+
+        deleted_id = session.id
+
+        RemediationRepository.delete_session(
+            db,
+            session,
+        )
+
+        return {
+            "deleted_id": deleted_id,
+            "message": "Remediation session deleted successfully",
         }

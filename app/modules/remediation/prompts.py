@@ -1,4 +1,4 @@
-from app.modules.catalog.model import Topic
+from app.modules.catalog.model import Chapter
 from app.modules.rag.model import DocumentChunk
 
 
@@ -21,8 +21,20 @@ def language_instruction(language: str) -> str:
     return "Write all student-facing text in English."
 
 
+def chapter_context_text(chapter: Chapter) -> str:
+    subject = chapter.subject
+    grade = subject.grade_level
+
+    return f"""
+Grade: {grade.name}
+Subject: {subject.name}
+Chapter: {chapter.title}
+Chapter description: {chapter.description or "Not provided"}
+""".strip()
+
+
 def remediation_generation_messages(
-    topic: Topic,
+    chapter: Chapter,
     language: str,
     weakness_label: str,
     evidence: str,
@@ -44,23 +56,20 @@ Do not include markdown or extra text outside JSON.
         {
             "role": "user",
             "content": f"""
-Selected topic:
-{topic.title}
-
-Topic description:
-{topic.description or "Not provided"}
+Selected learning context:
+{chapter_context_text(chapter)}
 
 Detected weakness:
 {weakness_label}
 
-Evidence from student's diagnostic answers:
+Evidence from student's chapter quiz answers:
 {evidence}
 
 Approved source context:
 {rag_context}
 
 Rules:
-- Do not repeat the whole topic.
+- Do not repeat the whole chapter.
 - Focus only on the detected weakness.
 - Keep explanation short and student-friendly.
 - Include one guided example.

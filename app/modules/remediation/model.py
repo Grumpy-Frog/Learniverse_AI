@@ -46,8 +46,8 @@ class RemediationSession(Base):
         index=True,
     )
 
-    topic_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("topics.id", ondelete="CASCADE"),
+    chapter_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("chapters.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -59,7 +59,7 @@ class RemediationSession(Base):
     )
 
     weakness_label: Mapped[str] = mapped_column(
-        String(80),
+        String(120),
         nullable=False,
     )
 
@@ -93,13 +93,15 @@ class RemediationSession(Base):
         nullable=False,
     )
 
-    content: Mapped[RemediationContent | None] = relationship(
+    content: Mapped["RemediationContent | None"] = relationship(
+        "RemediationContent",
         back_populates="session",
         cascade="all, delete-orphan",
         uselist=False,
     )
 
-    rechecks: Mapped[list[RemediationRecheck]] = relationship(
+    rechecks: Mapped[list["RemediationRecheck"]] = relationship(
+        "RemediationRecheck",
         back_populates="session",
         cascade="all, delete-orphan",
     )
@@ -168,7 +170,8 @@ class RemediationContent(Base):
         nullable=False,
     )
 
-    session: Mapped[RemediationSession] = relationship(
+    session: Mapped["RemediationSession"] = relationship(
+        "RemediationSession",
         back_populates="content",
     )
 
@@ -219,6 +222,7 @@ class RemediationRecheck(Base):
         nullable=False,
     )
 
-    session: Mapped[RemediationSession] = relationship(
+    session: Mapped["RemediationSession"] = relationship(
+        "RemediationSession",
         back_populates="rechecks",
     )

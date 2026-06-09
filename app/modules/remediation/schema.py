@@ -4,8 +4,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.modules.diagnostics.schema import SkillLabel
-
 
 LanguageCode = Literal["en", "bn"]
 NextAction = Literal["continue", "retry", "practice_more", "move_back"]
@@ -13,7 +11,7 @@ NextAction = Literal["continue", "retry", "practice_more", "move_back"]
 
 class RemediationGenerateRequest(BaseModel):
     language: LanguageCode = "en"
-    weakness_label: SkillLabel | None = None
+    weakness_label: str | None = Field(default=None, min_length=2, max_length=120)
 
 
 class RemediationGeneratedContent(BaseModel):
@@ -49,7 +47,7 @@ class RemediationRecheckEvaluation(BaseModel):
 class RemediationSessionResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
-    topic_id: uuid.UUID
+    chapter_id: uuid.UUID
     diagnostic_session_id: uuid.UUID
     weakness_label: str
     language: str
@@ -97,3 +95,8 @@ class RemediationDetailResponse(BaseModel):
 
 class RemediationListResponse(BaseModel):
     sessions: list[RemediationSessionResponse]
+
+
+class DeleteRemediationResponse(BaseModel):
+    deleted_id: uuid.UUID
+    message: str
