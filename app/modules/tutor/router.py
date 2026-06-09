@@ -7,13 +7,15 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.model import User
-from app.modules.tutor.model import TutorConversation, TutorMessage
+from app.modules.tutor.model import TutorConversation, TutorGroup, TutorMessage
 from app.modules.tutor.schema import (
     ChatMessageRequest,
     ConversationCreateRequest,
-    ConversationSettingsUpdateRequest,
+    DeleteTutorResponse,
     StoryGenerateRequest,
     TutorConversationResponse,
+    TutorGroupCreateRequest,
+    TutorGroupResponse,
     TutorMessageResponse,
     TutorTurnResponse,
 )
@@ -30,12 +32,59 @@ def response_note(is_source_grounded: bool) -> str:
     if is_source_grounded:
         return (
             "This response was generated using retrieved approved "
-            "textbook chunks for the selected topic."
+            "textbook chunks for the selected chapter."
         )
 
     return (
-        "AI-generated explanation. "
-        "Textbook-grounded RAG was not used for this response."
+        "AI-generated explanation within the selected chapter scope. "
+        "No approved textbook chunks were used for this response."
+    )
+
+
+@router.post(
+    "/groups",
+    response_model=TutorGroupResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_group(
+    payload: TutorGroupCreateRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> TutorGroup:
+    return TutorService.create_group(
+        db,
+        payload,
+        current_user,
+    )
+
+
+@router.get(
+    "/groups",
+    response_model=list[TutorGroupResponse],
+)
+def list_groups(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> list[TutorGroup]:
+    return TutorService.list_groups(
+        db,
+        current_user,
+    )
+
+
+@router.delete(
+    "/groups/{group_id}",
+    response_model=DeleteTutorResponse,
+)
+def delete_group(
+    group_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    return TutorService.delete_group(
+        db,
+        group_id,
+        current_user,
     )
 
 
@@ -70,20 +119,50 @@ def list_conversations(
     )
 
 
-@router.patch(
-    "/conversations/{conversation_id}/settings",
-    response_model=TutorConversationResponse,
+@router.get(
+    "/subjects/{subject_id}/conversations",
+    response_model=list[TutorConversationResponse],
 )
-def update_conversation_settings(
-    conversation_id: uuid.UUID,
-    payload: ConversationSettingsUpdateRequest,
+def list_subject_conversations(
+    subject_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> TutorConversation:
-    return TutorService.update_conversation_settings(
+) -> list[TutorConversation]:
+    return TutorService.list_subject_conversations(
+        db,
+        subject_id,
+        current_user,
+    )
+
+
+@router.get(
+    "/chapters/{chapter_id}/conversations",
+    response_model=list[TutorConversationResponse],
+)
+def list_chapter_conversations(
+    chapter_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> list[TutorConversation]:
+    return TutorService.list_chapter_conversations(
+        db,
+        chapter_id,
+        current_user,
+    )
+
+
+@router.delete(
+    "/conversations/{conversation_id}",
+    response_model=DeleteTutorResponse,
+)
+def delete_conversation(
+    conversation_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    return TutorService.delete_conversation(
         db,
         conversation_id,
-        payload,
         current_user,
     )
 

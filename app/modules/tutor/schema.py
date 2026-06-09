@@ -8,14 +8,26 @@ from pydantic import BaseModel, ConfigDict, Field
 LanguageCode = Literal["en", "bn"]
 
 
+class TutorGroupCreateRequest(BaseModel):
+    subject_id: uuid.UUID
+    title: str | None = Field(default=None, min_length=2, max_length=255)
+
+
+class TutorGroupResponse(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    subject_id: uuid.UUID
+    title: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ConversationCreateRequest(BaseModel):
-    topic_id: uuid.UUID
+    chapter_id: uuid.UUID
+    group_id: uuid.UUID | None = None
     language: LanguageCode = "en"
-    use_rag: bool = False
-
-
-class ConversationSettingsUpdateRequest(BaseModel):
-    use_rag: bool
 
 
 class StoryGenerateRequest(BaseModel):
@@ -35,13 +47,15 @@ class ChatMessageRequest(BaseModel):
 
 class TutorConversationResponse(BaseModel):
     id: uuid.UUID
+    group_id: uuid.UUID | None
     user_id: uuid.UUID
-    topic_id: uuid.UUID
+    subject_id: uuid.UUID
+    chapter_id: uuid.UUID
     language: str
     title: str
     provider: str
     model_name: str
-    use_rag: bool
+    rag_mode: str
     created_at: datetime
     updated_at: datetime
 
@@ -68,6 +82,7 @@ class TutorSourceResponse(BaseModel):
     document_id: uuid.UUID
     page_start: int
     page_end: int
+    section_title: str | None = None
     content_preview: str
 
 
@@ -76,3 +91,8 @@ class TutorTurnResponse(BaseModel):
     reply: TutorMessageResponse
     sources: list[TutorSourceResponse] = Field(default_factory=list)
     note: str
+
+
+class DeleteTutorResponse(BaseModel):
+    deleted_id: uuid.UUID
+    message: str

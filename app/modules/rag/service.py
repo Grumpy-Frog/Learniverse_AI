@@ -64,22 +64,34 @@ class RagService:
                 detail="Document must be approved before building RAG chunks",
             )
 
-        topic = CatalogRepository.get_topic_by_id(
+        chapter = CatalogRepository.get_chapter_by_id(
             db,
-            payload.topic_id,
+            document.chapter_id,
         )
 
-        if not topic or not topic.is_active:
+        if not chapter or not chapter.is_active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Topic not found",
+                detail="Chapter not found",
             )
 
-        if topic.chapter_id != document.chapter_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Topic does not belong to the document chapter",
+        if payload.topic_id:
+            topic = CatalogRepository.get_topic_by_id(
+                db,
+                payload.topic_id,
             )
+
+            if not topic or not topic.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Topic not found",
+                )
+
+            if topic.chapter_id != document.chapter_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Topic does not belong to the document chapter",
+                )
 
         if payload.page_end > document.page_count:
             raise HTTPException(
@@ -144,6 +156,7 @@ class RagService:
                         document_id=document.id,
                         chapter_id=document.chapter_id,
                         topic_id=payload.topic_id,
+                        section_title=payload.section_title,
                         language=document.language,
                         chunk_index=chunk_index,
                         content=content,
@@ -153,6 +166,7 @@ class RagService:
                         is_active=True,
                     )
                 )
+
                 chunk_index += 1
 
             start_index += step_size
@@ -163,18 +177,17 @@ class RagService:
                 detail="Could not create any chunks from selected pages",
             )
 
-        return RagRepository.replace_topic_chunks(
+        return RagRepository.replace_document_chapter_chunks(
             db,
-            document_id,
-            payload.topic_id,
+            document.id,
+            document.chapter_id,
             generated_chunks,
         )
 
     @staticmethod
-    def list_chunks(
+    def list_document_chapter_chunks(
         db: Session,
         document_id: uuid.UUID,
-        topic_id: uuid.UUID,
     ) -> list[DocumentChunk]:
         document = DocumentRepository.get_by_id(
             db,
@@ -187,50 +200,114 @@ class RagService:
                 detail="Document not found",
             )
 
-        topic = CatalogRepository.get_topic_by_id(
+        return RagRepository.list_document_chapter_chunks(
             db,
-            topic_id,
+            document.id,
+            document.chapter_id,
         )
 
-        if not topic:
+    @staticmethod
+    def list_chapter_chunks(
+        db: Session,
+        chapter_id: uuid.UUID,
+        language: str | None = None,
+    ) -> list[DocumentChunk]:
+        chapter = CatalogRepository.get_chapter_by_id(
+            db,
+            chapter_id,
+        )
+
+        if not chapter or not chapter.is_active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Topic not found",
+                detail="Chapter not found",
             )
 
-        return RagRepository.list_document_topic_chunks(
+        return RagRepository.list_chapter_chunks(
             db,
-            document_id,
-            topic_id,
+            chapter_id,
+            language,
         )
+
+    @staticmethod
+    def delete_chunk(
+        db: Session,
+        chunk_id: uuid.UUID,
+    ) -> dict:
+        chunk = RagRepository.get_chunk_by_id(
+            db,
+            chunk_id,
+        )
+
+        if not chunk:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Chunk not found",
+            )
+
+        RagRepository.delete_chunk(
+            db,
+            chunk,
+        )
+
+        return {
+            "deleted_count": 1,
+            "message": "Chunk deleted successfully",
+        }
+
+    @staticmethod
+    def delete_chapter_chunks(
+        db: Session,
+        chapter_id: uuid.UUID,
+    ) -> dict:
+        chapter = CatalogRepository.get_chapter_by_id(
+            db,
+            chapter_id,
+        )
+
+        if not chapter or not chapter.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Chapter not found",
+            )
+
+        deleted_count = RagRepository.delete_chapter_chunks(
+            db,
+            chapter_id,
+        )
+
+        return {
+            "deleted_count": deleted_count,
+            "message": "Chapter chunks deleted successfully",
+        }
 
     @staticmethod
     def search(
         db: Session,
         payload: RagSearchRequest,
     ) -> dict:
-        topic = CatalogRepository.get_topic_by_id(
+        chapter = CatalogRepository.get_chapter_by_id(
             db,
-            payload.topic_id,
+            payload.chapter_id,
         )
 
-        if not topic or not topic.is_active:
+        if not chapter or not chapter.is_active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Topic not found",
+                detail="Chapter not found",
             )
 
         candidates = RagRepository.list_search_candidates(
             db,
-            payload.topic_id,
+            payload.chapter_id,
             payload.language,
         )
 
         normalized_query = RagService._normalize_text(
-            payload.query
+            payload.query,
         )
         query_terms = RagService._query_terms(
-            payload.query
+            payload.query,
         )
 
         if not query_terms:
@@ -243,7 +320,7 @@ class RagService:
 
         for chunk in candidates:
             normalized_content = RagService._normalize_text(
-                chunk.content
+                chunk.content,
             )
 
             score = sum(
@@ -269,7 +346,7 @@ class RagService:
 
         for score, chunk in scored_chunks[: payload.limit]:
             chunk_data = ChunkResponse.model_validate(
-                chunk
+                chunk,
             ).model_dump()
             chunk_data["score"] = score
             result_items.append(chunk_data)
@@ -283,18 +360,13 @@ class RagService:
     @staticmethod
     def get_story_context_for_tutor(
         db: Session,
-        topic_id: uuid.UUID,
+        chapter_id: uuid.UUID,
         language: str,
         limit: int = 4,
     ) -> list[DocumentChunk]:
-        """
-        Used when generating the first story lesson.
-        There is no student search question yet, so return the first
-        approved chunks already assigned to the selected topic/language.
-        """
         candidates = RagRepository.list_search_candidates(
             db,
-            topic_id,
+            chapter_id,
             language,
         )
 
@@ -303,19 +375,15 @@ class RagService:
     @staticmethod
     def retrieve_context_for_tutor(
         db: Session,
-        topic_id: uuid.UUID,
+        chapter_id: uuid.UUID,
         language: str,
         query: str,
         limit: int = 4,
     ) -> list[DocumentChunk]:
-        """
-        Used for follow-up chat questions.
-        Returns relevant chunks in ranked search order.
-        """
         search_result = RagService.search(
             db,
             RagSearchRequest(
-                topic_id=topic_id,
+                chapter_id=chapter_id,
                 language=language,
                 query=query,
                 limit=limit,
@@ -329,7 +397,7 @@ class RagService:
 
         candidates = RagRepository.list_search_candidates(
             db,
-            topic_id,
+            chapter_id,
             language,
         )
 

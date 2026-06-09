@@ -5,17 +5,15 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.modules.auth.model import User
-from app.modules.catalog.model import Topic
+from app.modules.catalog.model import Chapter, Subject, Topic
 from app.modules.catalog.repository import CatalogRepository
 from app.modules.rag.model import DocumentChunk
 from app.modules.rag.service import RagService
 from app.modules.tutor.deepseek_provider import DeepSeekProvider
-from app.modules.tutor.model import TutorConversation, TutorMessage
+from app.modules.tutor.model import TutorConversation, TutorGroup, TutorMessage
 from app.modules.tutor.prompts import (
     chat_system_prompt,
     format_rag_context,
-    get_topic_context,
-    no_rag_context_reply,
     out_of_scope_reply,
     scope_check_messages,
     story_messages,
@@ -24,23 +22,57 @@ from app.modules.tutor.repository import TutorRepository
 from app.modules.tutor.schema import (
     ChatMessageRequest,
     ConversationCreateRequest,
-    ConversationSettingsUpdateRequest,
     StoryGenerateRequest,
+    TutorGroupCreateRequest,
 )
 
 
 class TutorService:
     @staticmethod
-    def _get_active_topic(db: Session, topic_id: uuid.UUID) -> Topic:
-        topic = CatalogRepository.get_topic_by_id(db, topic_id)
+    def _get_active_subject(
+        db: Session,
+        subject_id: uuid.UUID,
+    ) -> Subject:
+        subject = CatalogRepository.get_subject_by_id(
+            db,
+            subject_id,
+        )
 
-        if not topic or not topic.is_active:
+        if not subject or not subject.is_active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Topic not found",
+                detail="Subject not found",
             )
 
-        return topic
+        return subject
+
+    @staticmethod
+    def _get_active_chapter(
+        db: Session,
+        chapter_id: uuid.UUID,
+    ) -> Chapter:
+        chapter = CatalogRepository.get_chapter_by_id(
+            db,
+            chapter_id,
+        )
+
+        if not chapter or not chapter.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Chapter not found",
+            )
+
+        return chapter
+
+    @staticmethod
+    def _get_chapter_topics(
+        db: Session,
+        chapter_id: uuid.UUID,
+    ) -> list[Topic]:
+        return CatalogRepository.list_topics(
+            db,
+            chapter_id,
+        )
 
     @staticmethod
     def _get_user_conversation(
@@ -63,6 +95,52 @@ class TutorService:
         return conversation
 
     @staticmethod
+    def _get_user_group(
+        db: Session,
+        group_id: uuid.UUID,
+        current_user: User,
+    ) -> TutorGroup:
+        group = TutorRepository.get_group_for_user(
+            db,
+            group_id,
+            current_user.id,
+        )
+
+        if not group:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tutor group not found",
+            )
+
+        return group
+
+    @staticmethod
+    def _get_or_create_default_group(
+        db: Session,
+        current_user: User,
+        subject: Subject,
+    ) -> TutorGroup:
+        existing_group = TutorRepository.get_first_group_for_subject(
+            db,
+            current_user.id,
+            subject.id,
+        )
+
+        if existing_group:
+            return existing_group
+
+        group = TutorGroup(
+            user_id=current_user.id,
+            subject_id=subject.id,
+            title=subject.name,
+        )
+
+        return TutorRepository.create_group(
+            db,
+            group,
+        )
+
+    @staticmethod
     def _add_token_values(
         first: int | None,
         second: int | None,
@@ -81,6 +159,7 @@ class TutorService:
                 "document_id": chunk.document_id,
                 "page_start": chunk.page_start,
                 "page_end": chunk.page_end,
+                "section_title": chunk.section_title,
                 "content_preview": (
                     chunk.content[:180] + "..."
                     if len(chunk.content) > 180
@@ -91,25 +170,108 @@ class TutorService:
         ]
 
     @staticmethod
+    def create_group(
+        db: Session,
+        payload: TutorGroupCreateRequest,
+        current_user: User,
+    ) -> TutorGroup:
+        subject = TutorService._get_active_subject(
+            db,
+            payload.subject_id,
+        )
+
+        group = TutorGroup(
+            user_id=current_user.id,
+            subject_id=subject.id,
+            title=(payload.title or subject.name).strip(),
+        )
+
+        return TutorRepository.create_group(
+            db,
+            group,
+        )
+
+    @staticmethod
+    def list_groups(
+        db: Session,
+        current_user: User,
+    ) -> list[TutorGroup]:
+        return TutorRepository.list_user_groups(
+            db,
+            current_user.id,
+        )
+
+    @staticmethod
+    def delete_group(
+        db: Session,
+        group_id: uuid.UUID,
+        current_user: User,
+    ) -> dict:
+        group = TutorService._get_user_group(
+            db,
+            group_id,
+            current_user,
+        )
+
+        deleted_id = group.id
+
+        TutorRepository.delete_group(
+            db,
+            group,
+        )
+
+        return {
+            "deleted_id": deleted_id,
+            "message": "Tutor group deleted successfully",
+        }
+
+    @staticmethod
     def create_conversation(
         db: Session,
         payload: ConversationCreateRequest,
         current_user: User,
     ) -> TutorConversation:
-        topic = TutorService._get_active_topic(db, payload.topic_id)
-        _, subject_name, chapter_title, topic_title = get_topic_context(topic)
+        chapter = TutorService._get_active_chapter(
+            db,
+            payload.chapter_id,
+        )
+        subject = chapter.subject
+
+        if payload.group_id:
+            group = TutorService._get_user_group(
+                db,
+                payload.group_id,
+                current_user,
+            )
+
+            if group.subject_id != subject.id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Tutor group subject does not match chapter subject",
+                )
+        else:
+            group = TutorService._get_or_create_default_group(
+                db,
+                current_user,
+                subject,
+            )
 
         conversation = TutorConversation(
+            group_id=group.id,
             user_id=current_user.id,
-            topic_id=topic.id,
+            subject_id=subject.id,
+            chapter_id=chapter.id,
             language=payload.language,
-            title=f"{subject_name} — {chapter_title} — {topic_title}",
+            title=f"{subject.name} — {chapter.title}",
             provider="deepseek",
             model_name=settings.deepseek_model,
-            use_rag=payload.use_rag,
+            rag_mode="auto",
         )
 
-        return TutorRepository.create_conversation(db, conversation)
+        return TutorRepository.create_conversation(
+            db,
+            conversation,
+        )
 
     @staticmethod
     def list_conversations(
@@ -122,23 +284,62 @@ class TutorService:
         )
 
     @staticmethod
-    def update_conversation_settings(
+    def list_subject_conversations(
+        db: Session,
+        subject_id: uuid.UUID,
+        current_user: User,
+    ) -> list[TutorConversation]:
+        TutorService._get_active_subject(
+            db,
+            subject_id,
+        )
+
+        return TutorRepository.list_subject_conversations(
+            db,
+            current_user.id,
+            subject_id,
+        )
+
+    @staticmethod
+    def list_chapter_conversations(
+        db: Session,
+        chapter_id: uuid.UUID,
+        current_user: User,
+    ) -> list[TutorConversation]:
+        TutorService._get_active_chapter(
+            db,
+            chapter_id,
+        )
+
+        return TutorRepository.list_chapter_conversations(
+            db,
+            current_user.id,
+            chapter_id,
+        )
+
+    @staticmethod
+    def delete_conversation(
         db: Session,
         conversation_id: uuid.UUID,
-        payload: ConversationSettingsUpdateRequest,
         current_user: User,
-    ) -> TutorConversation:
+    ) -> dict:
         conversation = TutorService._get_user_conversation(
             db,
             conversation_id,
             current_user,
         )
 
-        return TutorRepository.update_settings(
+        deleted_id = conversation.id
+
+        TutorRepository.delete_conversation(
             db,
             conversation,
-            payload.use_rag,
         )
+
+        return {
+            "deleted_id": deleted_id,
+            "message": "Conversation deleted successfully",
+        }
 
     @staticmethod
     async def generate_story(
@@ -153,38 +354,34 @@ class TutorService:
             current_user,
         )
 
-        topic = TutorService._get_active_topic(
+        chapter = TutorService._get_active_chapter(
             db,
-            conversation.topic_id,
+            conversation.chapter_id,
+        )
+        topics = TutorService._get_chapter_topics(
+            db,
+            chapter.id,
         )
 
-        retrieved_chunks: list[DocumentChunk] = []
-        rag_context: str | None = None
+        retrieved_chunks = RagService.get_story_context_for_tutor(
+            db=db,
+            chapter_id=conversation.chapter_id,
+            language=conversation.language,
+            limit=4,
+        )
 
-        if conversation.use_rag:
-            retrieved_chunks = RagService.get_story_context_for_tutor(
-                db=db,
-                topic_id=conversation.topic_id,
-                language=conversation.language,
-                limit=4,
-            )
-
-            if not retrieved_chunks:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        "No RAG chunks are available for this topic and language. "
-                        "Build chunks or turn off RAG."
-                    ),
-                )
-
-            rag_context = format_rag_context(retrieved_chunks)
+        rag_context = (
+            format_rag_context(retrieved_chunks)
+            if retrieved_chunks
+            else None
+        )
 
         await DeepSeekProvider.ensure_credit_available()
 
         result = await DeepSeekProvider.complete(
             messages=story_messages(
-                topic=topic,
+                chapter=chapter,
+                topics=topics,
                 language=conversation.language,
                 student_preference=payload.student_preference,
                 rag_context=rag_context,
@@ -199,7 +396,7 @@ class TutorService:
             message_type="story",
             content=result.content,
             is_in_scope=True,
-            is_source_grounded=conversation.use_rag,
+            is_source_grounded=bool(retrieved_chunks),
             prompt_tokens=result.prompt_tokens,
             completion_tokens=result.completion_tokens,
             finish_reason=result.finish_reason,
@@ -230,12 +427,14 @@ class TutorService:
             current_user,
         )
 
-        topic = TutorService._get_active_topic(
+        chapter = TutorService._get_active_chapter(
             db,
-            conversation.topic_id,
+            conversation.chapter_id,
         )
-
-        _, _, chapter_title, _ = get_topic_context(topic)
+        topics = TutorService._get_chapter_topics(
+            db,
+            chapter.id,
+        )
 
         previous_messages = TutorRepository.list_recent_messages(
             db,
@@ -246,21 +445,20 @@ class TutorService:
         await DeepSeekProvider.ensure_credit_available()
 
         if TutorService._is_obviously_out_of_scope(payload.message):
-            is_in_scope = False
             scope_result = None
+            is_in_scope = False
         else:
             scope_result = await DeepSeekProvider.complete(
                 messages=scope_check_messages(
-                    topic=topic,
+                    chapter=chapter,
+                    topics=topics,
                     student_message=payload.message,
                 ),
                 max_tokens=settings.tutor_scope_check_max_tokens,
                 temperature=0.0,
             )
 
-            is_in_scope = scope_result.content.strip().upper() == "YES"
-
-        is_in_scope = scope_result.content.strip().upper().startswith("YES")
+            is_in_scope = scope_result.content.strip().upper().startswith("YES")
 
         user_message = TutorMessage(
             conversation_id=conversation.id,
@@ -283,7 +481,7 @@ class TutorService:
                 role="assistant",
                 message_type="refusal",
                 content=out_of_scope_reply(
-                    chapter_title=chapter_title,
+                    chapter_title=chapter.title,
                     language=conversation.language,
                 ),
                 is_in_scope=False,
@@ -301,54 +499,26 @@ class TutorService:
 
             return conversation, refusal, []
 
-        retrieved_chunks: list[DocumentChunk] = []
-        rag_context: str | None = None
+        retrieved_chunks = RagService.retrieve_context_for_tutor(
+            db=db,
+            chapter_id=conversation.chapter_id,
+            language=conversation.language,
+            query=payload.message,
+            limit=4,
+        )
 
-        if conversation.use_rag:
-            retrieved_chunks = RagService.retrieve_context_for_tutor(
-                db=db,
-                topic_id=conversation.topic_id,
-                language=conversation.language,
-                query=payload.message,
-                limit=4,
-            )
-
-            if not retrieved_chunks:
-                TutorRepository.add_message(
-                    db,
-                    conversation,
-                    user_message,
-                )
-
-                no_context_message = TutorMessage(
-                    conversation_id=conversation.id,
-                    role="assistant",
-                    message_type="refusal",
-                    content=no_rag_context_reply(
-                        conversation.language,
-                    ),
-                    is_in_scope=True,
-                    is_source_grounded=False,
-                    prompt_tokens=scope_result.prompt_tokens,
-                    completion_tokens=scope_result.completion_tokens,
-                    finish_reason=scope_result.finish_reason,
-                )
-
-                no_context_message = TutorRepository.add_message(
-                    db,
-                    conversation,
-                    no_context_message,
-                )
-
-                return conversation, no_context_message, []
-
-            rag_context = format_rag_context(retrieved_chunks)
+        rag_context = (
+            format_rag_context(retrieved_chunks)
+            if retrieved_chunks
+            else None
+        )
 
         api_messages: list[dict[str, str]] = [
             {
                 "role": "system",
                 "content": chat_system_prompt(
-                    topic=topic,
+                    chapter=chapter,
+                    topics=topics,
                     language=conversation.language,
                     rag_context=rag_context,
                 ),
@@ -388,13 +558,13 @@ class TutorService:
             message_type="chat",
             content=answer_result.content,
             is_in_scope=True,
-            is_source_grounded=conversation.use_rag,
+            is_source_grounded=bool(retrieved_chunks),
             prompt_tokens=TutorService._add_token_values(
-                scope_result.prompt_tokens,
+                scope_result.prompt_tokens if scope_result else None,
                 answer_result.prompt_tokens,
             ),
             completion_tokens=TutorService._add_token_values(
-                scope_result.completion_tokens,
+                scope_result.completion_tokens if scope_result else None,
                 answer_result.completion_tokens,
             ),
             finish_reason=answer_result.finish_reason,
@@ -428,7 +598,7 @@ class TutorService:
             db,
             conversation.id,
         )
-    
+
     @staticmethod
     def _is_obviously_out_of_scope(message: str) -> bool:
         text = message.lower()

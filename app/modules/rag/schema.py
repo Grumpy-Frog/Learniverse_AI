@@ -9,10 +9,13 @@ LanguageCode = Literal["en", "bn"]
 
 
 class ChunkBuildRequest(BaseModel):
-    topic_id: uuid.UUID
-
     page_start: int = Field(ge=1)
     page_end: int = Field(ge=1)
+
+    # Optional metadata only.
+    # Chunk is chapter-wise even if this is not provided.
+    topic_id: uuid.UUID | None = None
+    section_title: str | None = Field(default=None, max_length=255)
 
     chunk_size_words: int = Field(
         default=220,
@@ -45,7 +48,8 @@ class ChunkResponse(BaseModel):
     id: uuid.UUID
     document_id: uuid.UUID
     chapter_id: uuid.UUID
-    topic_id: uuid.UUID
+    topic_id: uuid.UUID | None
+    section_title: str | None
     language: str
     chunk_index: int
     content: str
@@ -59,7 +63,7 @@ class ChunkResponse(BaseModel):
 
 
 class RagSearchRequest(BaseModel):
-    topic_id: uuid.UUID
+    chapter_id: uuid.UUID
     language: LanguageCode
 
     query: str = Field(
@@ -82,3 +86,8 @@ class RagSearchResponse(BaseModel):
     query: str
     retrieval_method: str = "keyword"
     results: list[RetrievedChunkResponse]
+
+
+class DeleteChunksResponse(BaseModel):
+    deleted_count: int
+    message: str

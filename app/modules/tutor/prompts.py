@@ -1,17 +1,27 @@
-from app.modules.catalog.model import Topic
+from app.modules.catalog.model import Chapter, Topic
 from app.modules.rag.model import DocumentChunk
 
 
-def get_topic_context(topic: Topic) -> tuple[str, str, str, str]:
-    chapter = topic.chapter
+def get_chapter_context(
+    chapter: Chapter,
+    topics: list[Topic] | None = None,
+) -> tuple[str, str, str, str]:
     subject = chapter.subject
     grade = subject.grade_level
+
+    topic_titles = ", ".join(
+        topic.title
+        for topic in topics or []
+    )
+
+    if not topic_titles:
+        topic_titles = "No specific section list provided."
 
     return (
         grade.name,
         subject.name,
         chapter.title,
-        topic.title,
+        topic_titles,
     )
 
 
@@ -26,27 +36,12 @@ def out_of_scope_reply(chapter_title: str, language: str) -> str:
     if language == "bn":
         return (
             "এই প্রশ্নটি আপনার নির্বাচিত বিষয় বা অধ্যায়ের বাইরে। "
-            "অনুগ্রহ করে নির্বাচিত বিষয়, অধ্যায় বা টপিক সম্পর্কিত প্রশ্ন করুন।"
+            "অনুগ্রহ করে নির্বাচিত বিষয় বা অধ্যায় সম্পর্কিত প্রশ্ন করুন।"
         )
 
     return (
-        "This question is outside your selected subject or topic. "
+        "This question is outside your selected subject or chapter. "
         "Please ask something related to your selected learning content."
-    )
-
-
-def no_rag_context_reply(language: str) -> str:
-    if language == "bn":
-        return (
-            "আপনার নির্বাচিত বিষয়ের জন্য অনুমোদিত পাঠ্যবইয়ের "
-            "প্রাসঙ্গিক তথ্য পাওয়া যায়নি। RAG বন্ধ করে চেষ্টা করুন "
-            "অথবা অ্যাডমিনকে সোর্স কনটেন্ট যুক্ত করতে বলুন।"
-        )
-
-    return (
-        "I could not find approved textbook context for this question "
-        "inside your selected topic. Turn off RAG or add the required "
-        "source chunks first."
     )
 
 
@@ -54,8 +49,14 @@ def format_rag_context(chunks: list[DocumentChunk]) -> str:
     sections = []
 
     for index, chunk in enumerate(chunks, start=1):
+        section_name = (
+            f" | Section: {chunk.section_title}"
+            if chunk.section_title
+            else ""
+        )
+
         sections.append(
-            f"[Source {index}: pages {chunk.page_start}-{chunk.page_end}]\n"
+            f"[Source {index}: pages {chunk.page_start}-{chunk.page_end}{section_name}]\n"
             f"{chunk.content}"
         )
 
@@ -63,10 +64,14 @@ def format_rag_context(chunks: list[DocumentChunk]) -> str:
 
 
 def scope_check_messages(
-    topic: Topic,
+    chapter: Chapter,
+    topics: list[Topic],
     student_message: str,
 ) -> list[dict[str, str]]:
-    grade_name, subject_name, chapter_title, topic_title = get_topic_context(topic)
+    grade_name, subject_name, chapter_title, topic_titles = get_chapter_context(
+        chapter,
+        topics,
+    )
 
     return [
         {
@@ -90,29 +95,29 @@ Selected learning context:
 - Grade: {grade_name}
 - Subject: {subject_name}
 - Chapter: {chapter_title}
-- Topic: {topic_title}
+- Chapter sections/topics: {topic_titles}
 
 Student question:
 {student_message}
 
 Decision rules:
-Reply YES only if the question is related to the selected subject, chapter, or topic.
+Reply YES only if the question is related to the selected grade, subject, or chapter.
 
 Reply YES for:
 - questions about {subject_name}
 - questions about {chapter_title}
-- questions about {topic_title}
-- prerequisite concepts needed to understand this selected topic
-- formulas, units, examples, graphs, numerical problems, or real-life applications related to the selected subject
+- questions about chapter sections/topics listed above
+- prerequisite concepts needed to understand this selected chapter
+- formulas, units, examples, graphs, numerical problems, or real-life applications related to the selected subject/chapter
 
 Reply NO for:
 - programming questions such as C, C++, Java, Python, HTML, CSS, React
 - sports, entertainment, politics, history, religion, lifestyle, random general knowledge
-- questions from another subject
+- questions from another unrelated subject
 - requests unrelated to school-level {subject_name}
 - personal, romantic, unsafe, or non-educational requests
 
-Is the student question inside the selected subject/topic scope?
+Is the student question inside the selected subject/chapter scope?
 
 Reply exactly:
 YES
@@ -124,12 +129,16 @@ NO
 
 
 def story_messages(
-    topic: Topic,
+    chapter: Chapter,
+    topics: list[Topic],
     language: str,
     student_preference: str | None,
     rag_context: str | None = None,
 ) -> list[dict[str, str]]:
-    grade_name, subject_name, chapter_title, topic_title = get_topic_context(topic)
+    grade_name, subject_name, chapter_title, topic_titles = get_chapter_context(
+        chapter,
+        topics,
+    )
     preference = student_preference or "No special story preference."
 
     if rag_context:
@@ -142,9 +151,10 @@ def story_messages(
         source_context = f"\nApproved source context:\n{rag_context}"
     else:
         source_rule = """
+- No approved textbook chunks were found for this chapter.
 - Do not claim that this answer is verified from a textbook.
 - Do not provide textbook page references.
-- Textbook-grounded retrieval was not used for this response.
+- Give a safe chapter-level explanation using the selected learning scope.
 """
         source_context = ""
 
@@ -155,10 +165,10 @@ Selected learning scope:
 - Grade: {grade_name}
 - Subject: {subject_name}
 - Chapter: {chapter_title}
-- Topic: {topic_title}
+- Chapter sections/topics: {topic_titles}
 
 Rules:
-- Teach only within this selected chapter and topic.
+- Teach only within this selected subject and chapter.
 - Begin with an engaging everyday story.
 - Then connect the story to the learning concept.
 - Keep the explanation suitable for a school student.
@@ -169,20 +179,17 @@ Rules:
 """.strip()
 
     user_prompt = f"""
-Create the first story-based learning explanation for this topic.
+Create the first story-based learning explanation for this chapter.
 
-Topic description:
-{topic.description or "No additional topic description provided."}
-
-Learning objective:
-{topic.learning_objective or "Understand the selected topic."}
+Chapter description:
+{chapter.description or "No additional chapter description provided."}
 
 Student story preference:
 {preference}
 
 Use this structure:
 1. Story
-2. Connection to the concept
+2. Connection to the chapter concept
 3. Key idea in simple words
 4. Real-life example
 5. Quick check question
@@ -195,25 +202,30 @@ Use this structure:
 
 
 def chat_system_prompt(
-    topic: Topic,
+    chapter: Chapter,
+    topics: list[Topic],
     language: str,
     rag_context: str | None = None,
 ) -> str:
-    grade_name, subject_name, chapter_title, topic_title = get_topic_context(topic)
+    grade_name, subject_name, chapter_title, topic_titles = get_chapter_context(
+        chapter,
+        topics,
+    )
 
     if rag_context:
         source_rule = """
 Use the approved source context below as the factual basis of your answer.
 If the approved source context does not contain enough information to answer,
 say that the source material is insufficient for this question.
-Do not answer from unsupported outside knowledge.
+Do not answer from unsupported outside knowledge when source context is available.
 
 Approved source context:
 """ + rag_context
     else:
         source_rule = """
-Textbook-grounded retrieval was not used.
+No approved textbook chunks were found for this question.
 Do not claim textbook verification or provide textbook page citations.
+Answer using only the selected grade, subject, and chapter scope.
 """
 
     return f"""
@@ -223,12 +235,11 @@ Selected learning scope:
 - Grade: {grade_name}
 - Subject: {subject_name}
 - Chapter: {chapter_title}
-- Current topic: {topic_title}
+- Chapter sections/topics: {topic_titles}
 
 Strict rules:
 - Answer only within the selected subject and chapter.
-- Focus especially on the selected topic.
-- Explain using simple stories, analogies or daily-life examples when helpful.
+- Explain using simple stories, analogies, or daily-life examples when helpful.
 - Never answer questions unrelated to this selected chapter.
 - Keep the answer concise and student-friendly.
 - {language_rule(language)}

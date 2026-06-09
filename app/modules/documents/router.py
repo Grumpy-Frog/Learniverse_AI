@@ -9,6 +9,7 @@ from app.modules.auth.dependencies import require_admin
 from app.modules.auth.model import User
 from app.modules.documents.model import Document, DocumentPage
 from app.modules.documents.schema import (
+    DeleteDocumentResponse,
     DocumentPageResponse,
     DocumentResponse,
 )
@@ -99,6 +100,21 @@ def approve_document(
     admin_user: Annotated[User, Depends(require_admin)],
 ) -> Document:
     return DocumentService.approve_document(
+        db,
+        document_id,
+    )
+
+
+@router.delete(
+    "/{document_id}",
+    response_model=DeleteDocumentResponse,
+)
+def delete_document(
+    document_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    admin_user: Annotated[User, Depends(require_admin)],
+) -> dict:
+    return DocumentService.delete_document(
         db,
         document_id,
     )

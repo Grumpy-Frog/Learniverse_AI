@@ -4,7 +4,6 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -19,15 +18,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 
-class TutorConversation(Base):
-    __tablename__ = "tutor_conversations"
-
-    __table_args__ = (
-        CheckConstraint(
-            "language IN ('en', 'bn')",
-            name="ck_tutor_conversation_language",
-        ),
-    )
+class TutorGroup(Base):
+    __tablename__ = "tutor_groups"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -41,8 +33,76 @@ class TutorConversation(Base):
         index=True,
     )
 
-    topic_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("topics.id", ondelete="CASCADE"),
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    title: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    conversations: Mapped[list[TutorConversation]] = relationship(
+        back_populates="group",
+        cascade="all, delete-orphan",
+    )
+
+
+class TutorConversation(Base):
+    __tablename__ = "tutor_conversations"
+
+    __table_args__ = (
+        CheckConstraint(
+            "language IN ('en', 'bn')",
+            name="ck_tutor_conversation_language",
+        ),
+        CheckConstraint(
+            "rag_mode IN ('auto')",
+            name="ck_tutor_conversation_rag_mode",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tutor_groups.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    chapter_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("chapters.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -69,10 +129,10 @@ class TutorConversation(Base):
         nullable=False,
     )
 
-    use_rag: Mapped[bool] = mapped_column(
-        Boolean,
+    rag_mode: Mapped[str] = mapped_column(
+        String(20),
         nullable=False,
-        default=False,
+        default="auto",
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -86,6 +146,10 @@ class TutorConversation(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    group: Mapped[TutorGroup | None] = relationship(
+        back_populates="conversations",
     )
 
     messages: Mapped[list[TutorMessage]] = relationship(
@@ -137,13 +201,11 @@ class TutorMessage(Base):
     )
 
     is_in_scope: Mapped[bool] = mapped_column(
-        Boolean,
         nullable=False,
         default=True,
     )
 
     is_source_grounded: Mapped[bool] = mapped_column(
-        Boolean,
         nullable=False,
         default=False,
     )

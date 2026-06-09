@@ -11,6 +11,7 @@ from app.modules.auth.model import User
 from app.modules.catalog.repository import CatalogRepository
 from app.modules.documents.model import Document
 from app.modules.documents.repository import DocumentRepository
+from app.modules.rag.repository import RagRepository
 
 
 class DocumentService:
@@ -46,7 +47,10 @@ class DocumentService:
         if existing_document:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="A textbook PDF already exists for this chapter and language",
+                detail=(
+                    "A textbook PDF already exists for this chapter and language. "
+                    "Delete the existing document before uploading a new one."
+                ),
             )
 
         if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -243,3 +247,49 @@ class DocumentService:
             db,
             document,
         )
+
+    @staticmethod
+    def delete_document(
+        db: Session,
+        document_id: uuid.UUID,
+    ) -> dict:
+        document = DocumentRepository.get_by_id(
+            db,
+            document_id,
+        )
+
+        if not document:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found",
+            )
+
+        deleted_id = document.id
+        storage_path = document.storage_path
+        chapter_id = document.chapter_id
+
+        # Delete chunks created from this document first.
+        # This avoids stale RAG chunks after replacing a chapter PDF.
+        RagRepository.delete_document_chapter_chunks(
+            db,
+            document_id=deleted_id,
+            chapter_id=chapter_id,
+        )
+
+        DocumentRepository.delete(
+            db,
+            document,
+        )
+
+        # Remove local PDF file if it still exists.
+        # Do not fail the API only because the file is already missing.
+        if storage_path:
+            try:
+                Path(storage_path).unlink(missing_ok=True)
+            except OSError:
+                pass
+
+        return {
+            "deleted_id": deleted_id,
+            "message": "Document deleted successfully",
+        }

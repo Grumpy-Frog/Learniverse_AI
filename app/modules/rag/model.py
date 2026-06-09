@@ -28,9 +28,9 @@ class DocumentChunk(Base):
         ),
         UniqueConstraint(
             "document_id",
-            "topic_id",
+            "chapter_id",
             "chunk_index",
-            name="uq_document_topic_chunk_index",
+            name="uq_document_chapter_chunk_index",
         ),
     )
 
@@ -52,10 +52,18 @@ class DocumentChunk(Base):
         index=True,
     )
 
-    topic_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("topics.id", ondelete="CASCADE"),
-        nullable=False,
+    # Optional now.
+    # A chunk belongs to a chapter.
+    # topic_id is only metadata if admin wants to tag a chunk/section later.
+    topic_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("topics.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
+    )
+
+    section_title: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
     )
 
     language: Mapped[str] = mapped_column(

@@ -33,3 +33,8 @@ class DocumentPageResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DeleteDocumentResponse(BaseModel):
+    deleted_id: uuid.UUID
+    message: str
