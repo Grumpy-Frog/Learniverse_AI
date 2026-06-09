@@ -151,10 +151,12 @@ class TutorRepository:
         conversation: TutorConversation,
         message: TutorMessage,
     ) -> TutorMessage:
-        conversation.updated_at = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
+
+        conversation.updated_at = now
 
         if conversation.group:
-            conversation.group.updated_at = datetime.now(timezone.utc)
+            conversation.group.updated_at = now
 
         db.add(message)
         db.commit()

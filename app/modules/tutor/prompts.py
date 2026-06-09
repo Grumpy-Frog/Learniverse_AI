@@ -1,27 +1,17 @@
-from app.modules.catalog.model import Chapter, Topic
+from app.modules.catalog.model import Chapter
 from app.modules.rag.model import DocumentChunk
 
 
 def get_chapter_context(
     chapter: Chapter,
-    topics: list[Topic] | None = None,
-) -> tuple[str, str, str, str]:
+) -> tuple[str, str, str]:
     subject = chapter.subject
     grade = subject.grade_level
-
-    topic_titles = ", ".join(
-        topic.title
-        for topic in topics or []
-    )
-
-    if not topic_titles:
-        topic_titles = "No specific section list provided."
 
     return (
         grade.name,
         subject.name,
         chapter.title,
-        topic_titles,
     )
 
 
@@ -35,8 +25,8 @@ def language_rule(language: str) -> str:
 def out_of_scope_reply(chapter_title: str, language: str) -> str:
     if language == "bn":
         return (
-            "এই প্রশ্নটি আপনার নির্বাচিত বিষয় বা অধ্যায়ের বাইরে। "
-            "অনুগ্রহ করে নির্বাচিত বিষয় বা অধ্যায় সম্পর্কিত প্রশ্ন করুন।"
+            "This question is outside your selected subject or chapter. "
+            "Please ask something related to your selected learning content."
         )
 
     return (
@@ -49,14 +39,8 @@ def format_rag_context(chunks: list[DocumentChunk]) -> str:
     sections = []
 
     for index, chunk in enumerate(chunks, start=1):
-        section_name = (
-            f" | Section: {chunk.section_title}"
-            if chunk.section_title
-            else ""
-        )
-
         sections.append(
-            f"[Source {index}: pages {chunk.page_start}-{chunk.page_end}{section_name}]\n"
+            f"[Source {index}: pages {chunk.page_start}-{chunk.page_end}]\n"
             f"{chunk.content}"
         )
 
@@ -65,12 +49,10 @@ def format_rag_context(chunks: list[DocumentChunk]) -> str:
 
 def scope_check_messages(
     chapter: Chapter,
-    topics: list[Topic],
     student_message: str,
 ) -> list[dict[str, str]]:
-    grade_name, subject_name, chapter_title, topic_titles = get_chapter_context(
+    grade_name, subject_name, chapter_title = get_chapter_context(
         chapter,
-        topics,
     )
 
     return [
@@ -95,7 +77,6 @@ Selected learning context:
 - Grade: {grade_name}
 - Subject: {subject_name}
 - Chapter: {chapter_title}
-- Chapter sections/topics: {topic_titles}
 
 Student question:
 {student_message}
@@ -106,7 +87,6 @@ Reply YES only if the question is related to the selected grade, subject, or cha
 Reply YES for:
 - questions about {subject_name}
 - questions about {chapter_title}
-- questions about chapter sections/topics listed above
 - prerequisite concepts needed to understand this selected chapter
 - formulas, units, examples, graphs, numerical problems, or real-life applications related to the selected subject/chapter
 
@@ -130,15 +110,14 @@ NO
 
 def story_messages(
     chapter: Chapter,
-    topics: list[Topic],
     language: str,
     student_preference: str | None,
     rag_context: str | None = None,
 ) -> list[dict[str, str]]:
-    grade_name, subject_name, chapter_title, topic_titles = get_chapter_context(
+    grade_name, subject_name, chapter_title = get_chapter_context(
         chapter,
-        topics,
     )
+
     preference = student_preference or "No special story preference."
 
     if rag_context:
@@ -165,7 +144,6 @@ Selected learning scope:
 - Grade: {grade_name}
 - Subject: {subject_name}
 - Chapter: {chapter_title}
-- Chapter sections/topics: {topic_titles}
 
 Rules:
 - Teach only within this selected subject and chapter.
@@ -203,13 +181,11 @@ Use this structure:
 
 def chat_system_prompt(
     chapter: Chapter,
-    topics: list[Topic],
     language: str,
     rag_context: str | None = None,
 ) -> str:
-    grade_name, subject_name, chapter_title, topic_titles = get_chapter_context(
+    grade_name, subject_name, chapter_title = get_chapter_context(
         chapter,
-        topics,
     )
 
     if rag_context:
@@ -235,7 +211,6 @@ Selected learning scope:
 - Grade: {grade_name}
 - Subject: {subject_name}
 - Chapter: {chapter_title}
-- Chapter sections/topics: {topic_titles}
 
 Strict rules:
 - Answer only within the selected subject and chapter.

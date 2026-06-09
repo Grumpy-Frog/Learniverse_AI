@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -57,7 +58,8 @@ class TutorGroup(Base):
         nullable=False,
     )
 
-    conversations: Mapped[list[TutorConversation]] = relationship(
+    conversations: Mapped[list["TutorConversation"]] = relationship(
+        "TutorConversation",
         back_populates="group",
         cascade="all, delete-orphan",
     )
@@ -129,6 +131,7 @@ class TutorConversation(Base):
         nullable=False,
     )
 
+    # Internal only. Student does not choose this.
     rag_mode: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
@@ -148,11 +151,13 @@ class TutorConversation(Base):
         nullable=False,
     )
 
-    group: Mapped[TutorGroup | None] = relationship(
+    group: Mapped["TutorGroup | None"] = relationship(
+        "TutorGroup",
         back_populates="conversations",
     )
 
-    messages: Mapped[list[TutorMessage]] = relationship(
+    messages: Mapped[list["TutorMessage"]] = relationship(
+        "TutorMessage",
         back_populates="conversation",
         cascade="all, delete-orphan",
     )
@@ -201,11 +206,13 @@ class TutorMessage(Base):
     )
 
     is_in_scope: Mapped[bool] = mapped_column(
+        Boolean,
         nullable=False,
         default=True,
     )
 
     is_source_grounded: Mapped[bool] = mapped_column(
+        Boolean,
         nullable=False,
         default=False,
     )
@@ -231,6 +238,7 @@ class TutorMessage(Base):
         nullable=False,
     )
 
-    conversation: Mapped[TutorConversation] = relationship(
+    conversation: Mapped["TutorConversation"] = relationship(
+        "TutorConversation",
         back_populates="messages",
     )

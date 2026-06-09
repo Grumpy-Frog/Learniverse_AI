@@ -12,11 +12,6 @@ class ChunkBuildRequest(BaseModel):
     page_start: int = Field(ge=1)
     page_end: int = Field(ge=1)
 
-    # Optional metadata only.
-    # Chunk is chapter-wise even if this is not provided.
-    topic_id: uuid.UUID | None = None
-    section_title: str | None = Field(default=None, max_length=255)
-
     chunk_size_words: int = Field(
         default=220,
         ge=80,
@@ -48,8 +43,6 @@ class ChunkResponse(BaseModel):
     id: uuid.UUID
     document_id: uuid.UUID
     chapter_id: uuid.UUID
-    topic_id: uuid.UUID | None
-    section_title: str | None
     language: str
     chunk_index: int
     content: str

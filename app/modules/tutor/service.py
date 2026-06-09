@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.modules.auth.model import User
-from app.modules.catalog.model import Chapter, Subject, Topic
+from app.modules.catalog.model import Chapter, Subject
 from app.modules.catalog.repository import CatalogRepository
 from app.modules.rag.model import DocumentChunk
 from app.modules.rag.service import RagService
@@ -63,16 +63,6 @@ class TutorService:
             )
 
         return chapter
-
-    @staticmethod
-    def _get_chapter_topics(
-        db: Session,
-        chapter_id: uuid.UUID,
-    ) -> list[Topic]:
-        return CatalogRepository.list_topics(
-            db,
-            chapter_id,
-        )
 
     @staticmethod
     def _get_user_conversation(
@@ -159,7 +149,6 @@ class TutorService:
                 "document_id": chunk.document_id,
                 "page_start": chunk.page_start,
                 "page_end": chunk.page_end,
-                "section_title": chunk.section_title,
                 "content_preview": (
                     chunk.content[:180] + "..."
                     if len(chunk.content) > 180
@@ -235,6 +224,7 @@ class TutorService:
             db,
             payload.chapter_id,
         )
+
         subject = chapter.subject
 
         if payload.group_id:
@@ -358,10 +348,6 @@ class TutorService:
             db,
             conversation.chapter_id,
         )
-        topics = TutorService._get_chapter_topics(
-            db,
-            chapter.id,
-        )
 
         retrieved_chunks = RagService.get_story_context_for_tutor(
             db=db,
@@ -381,7 +367,6 @@ class TutorService:
         result = await DeepSeekProvider.complete(
             messages=story_messages(
                 chapter=chapter,
-                topics=topics,
                 language=conversation.language,
                 student_preference=payload.student_preference,
                 rag_context=rag_context,
@@ -431,10 +416,6 @@ class TutorService:
             db,
             conversation.chapter_id,
         )
-        topics = TutorService._get_chapter_topics(
-            db,
-            chapter.id,
-        )
 
         previous_messages = TutorRepository.list_recent_messages(
             db,
@@ -451,7 +432,6 @@ class TutorService:
             scope_result = await DeepSeekProvider.complete(
                 messages=scope_check_messages(
                     chapter=chapter,
-                    topics=topics,
                     student_message=payload.message,
                 ),
                 max_tokens=settings.tutor_scope_check_max_tokens,
@@ -518,7 +498,6 @@ class TutorService:
                 "role": "system",
                 "content": chat_system_prompt(
                     chapter=chapter,
-                    topics=topics,
                     language=conversation.language,
                     rag_context=rag_context,
                 ),

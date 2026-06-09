@@ -34,7 +34,7 @@ class StoryGenerateRequest(BaseModel):
     student_preference: str | None = Field(
         default=None,
         max_length=300,
-        description="Example: Explain through a bicycle ride story.",
+        description="Example: Explain with a bicycle story.",
     )
 
 
@@ -82,7 +82,6 @@ class TutorSourceResponse(BaseModel):
     document_id: uuid.UUID
     page_start: int
     page_end: int
-    section_title: str | None = None
     content_preview: str
 
 

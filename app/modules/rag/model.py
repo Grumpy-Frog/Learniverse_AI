@@ -52,20 +52,6 @@ class DocumentChunk(Base):
         index=True,
     )
 
-    # Optional now.
-    # A chunk belongs to a chapter.
-    # topic_id is only metadata if admin wants to tag a chunk/section later.
-    topic_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("topics.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-
-    section_title: Mapped[str | None] = mapped_column(
-        String(255),
-        nullable=True,
-    )
-
     language: Mapped[str] = mapped_column(
         String(5),
         nullable=False,

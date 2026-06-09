@@ -75,24 +75,6 @@ class RagService:
                 detail="Chapter not found",
             )
 
-        if payload.topic_id:
-            topic = CatalogRepository.get_topic_by_id(
-                db,
-                payload.topic_id,
-            )
-
-            if not topic or not topic.is_active:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Topic not found",
-                )
-
-            if topic.chapter_id != document.chapter_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Topic does not belong to the document chapter",
-                )
-
         if payload.page_end > document.page_count:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -155,8 +137,6 @@ class RagService:
                     DocumentChunk(
                         document_id=document.id,
                         chapter_id=document.chapter_id,
-                        topic_id=payload.topic_id,
-                        section_title=payload.section_title,
                         language=document.language,
                         chunk_index=chunk_index,
                         content=content,
