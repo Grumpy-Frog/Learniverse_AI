@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.modules.auth.model import User
-from app.modules.catalog.model import Topic
+from app.modules.catalog.model import Chapter
 from app.modules.catalog.repository import CatalogRepository
 from app.modules.diagnostics.model import (
     DiagnosticAnswer,
@@ -14,7 +14,7 @@ from app.modules.diagnostics.model import (
     DiagnosticSession,
 )
 from app.modules.diagnostics.prompts import (
-    diagnostic_quiz_messages,
+    chapter_quiz_messages,
     short_answer_evaluation_messages,
     understanding_check_messages,
 )
@@ -33,42 +33,42 @@ from app.modules.tutor.deepseek_provider import DeepSeekProvider
 
 class DiagnosticsService:
     @staticmethod
-    def _get_active_topic(
+    def _get_active_chapter(
         db: Session,
-        topic_id: uuid.UUID,
-    ) -> Topic:
-        topic = CatalogRepository.get_topic_by_id(
+        chapter_id: uuid.UUID,
+    ) -> Chapter:
+        chapter = CatalogRepository.get_chapter_by_id(
             db,
-            topic_id,
+            chapter_id,
         )
 
-        if not topic or not topic.is_active:
+        if not chapter or not chapter.is_active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Topic not found",
+                detail="Chapter not found",
             )
 
-        return topic
+        return chapter
 
     @staticmethod
     def _get_source_chunks(
         db: Session,
-        topic_id: uuid.UUID,
+        chapter_id: uuid.UUID,
         language: str,
     ) -> list[DocumentChunk]:
         chunks = RagService.get_story_context_for_tutor(
             db=db,
-            topic_id=topic_id,
+            chapter_id=chapter_id,
             language=language,
-            limit=6,
+            limit=8,
         )
 
         if not chunks:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
-                    "No approved source chunks are available for diagnostic generation. "
-                    "Build RAG chunks for this topic and language first."
+                    "No approved source chunks are available for this chapter. "
+                    "Upload and approve a chapter PDF, then build RAG chunks first."
                 ),
             )
 
@@ -105,7 +105,7 @@ class DiagnosticsService:
                 options=item.options,
                 correct_answer=item.correct_answer.strip(),
                 evaluation_rubric=item.evaluation_rubric,
-                skill_label=item.skill_label,
+                skill_label=item.skill_label.strip(),
                 explanation=item.explanation,
                 display_order=index,
                 max_score=1.0,
@@ -116,18 +116,18 @@ class DiagnosticsService:
     @staticmethod
     async def generate_understanding_check(
         db: Session,
-        topic_id: uuid.UUID,
+        chapter_id: uuid.UUID,
         payload: DiagnosticGenerateRequest,
         current_user: User,
     ) -> DiagnosticSession:
-        topic = DiagnosticsService._get_active_topic(
+        chapter = DiagnosticsService._get_active_chapter(
             db,
-            topic_id,
+            chapter_id,
         )
 
         chunks = DiagnosticsService._get_source_chunks(
             db,
-            topic_id,
+            chapter_id,
             payload.language,
         )
 
@@ -135,7 +135,7 @@ class DiagnosticsService:
 
         completion = await DeepSeekProvider.complete_json(
             messages=understanding_check_messages(
-                topic=topic,
+                chapter=chapter,
                 language=payload.language,
                 chunks=chunks,
             ),
@@ -167,7 +167,7 @@ class DiagnosticsService:
 
         session = DiagnosticSession(
             user_id=current_user.id,
-            topic_id=topic_id,
+            chapter_id=chapter_id,
             conversation_id=payload.conversation_id,
             language=payload.language,
             assessment_type="understanding_check",
@@ -184,28 +184,28 @@ class DiagnosticsService:
         )
 
     @staticmethod
-    async def generate_diagnostic_quiz(
+    async def generate_chapter_quiz(
         db: Session,
-        topic_id: uuid.UUID,
+        chapter_id: uuid.UUID,
         payload: DiagnosticGenerateRequest,
         current_user: User,
     ) -> DiagnosticSession:
-        topic = DiagnosticsService._get_active_topic(
+        chapter = DiagnosticsService._get_active_chapter(
             db,
-            topic_id,
+            chapter_id,
         )
 
         chunks = DiagnosticsService._get_source_chunks(
             db,
-            topic_id,
+            chapter_id,
             payload.language,
         )
 
         await DeepSeekProvider.ensure_credit_available()
 
         completion = await DeepSeekProvider.complete_json(
-            messages=diagnostic_quiz_messages(
-                topic=topic,
+            messages=chapter_quiz_messages(
+                chapter=chapter,
                 language=payload.language,
                 chunks=chunks,
             ),
@@ -220,7 +220,7 @@ class DiagnosticsService:
         except ValidationError as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="DeepSeek returned an invalid diagnostic quiz shape",
+                detail="DeepSeek returned an invalid chapter quiz shape",
             ) from exc
 
         questions = generated_set.questions
@@ -228,7 +228,7 @@ class DiagnosticsService:
         if len(questions) != 5:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Diagnostic quiz must contain exactly five questions",
+                detail="Chapter quiz must contain exactly five questions",
             )
 
         mcq_count = sum(
@@ -244,15 +244,15 @@ class DiagnosticsService:
         if mcq_count != 3 or short_answer_count != 2:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Diagnostic quiz must contain exactly 3 MCQ and 2 short-answer questions",
+                detail="Chapter quiz must contain exactly 3 MCQ and 2 short-answer questions",
             )
 
         session = DiagnosticSession(
             user_id=current_user.id,
-            topic_id=topic_id,
+            chapter_id=chapter_id,
             conversation_id=payload.conversation_id,
             language=payload.language,
-            assessment_type="diagnostic_quiz",
+            assessment_type="chapter_quiz",
             status="generated",
             question_count=5,
         )
@@ -341,7 +341,7 @@ class DiagnosticsService:
                         feedback=(
                             "Correct."
                             if is_correct
-                            else question.explanation
+                            else question.explanation or "Incorrect."
                         ),
                         detected_weakness=(
                             None
@@ -431,7 +431,7 @@ class DiagnosticsService:
                 else "needs_diagnostic"
             )
 
-            update_topic_status = False
+            update_chapter_status = False
         else:
             outcome = (
                 "strong"
@@ -439,7 +439,7 @@ class DiagnosticsService:
                 else "needs_practice"
             )
 
-            update_topic_status = True
+            update_chapter_status = True
 
         return DiagnosticsRepository.save_evaluation(
             db=db,
@@ -450,7 +450,7 @@ class DiagnosticsService:
             outcome=outcome,
             strengths=strengths,
             weaknesses=weaknesses,
-            update_topic_status=update_topic_status,
+            update_chapter_status=update_chapter_status,
             pass_percentage=settings.diagnostic_pass_percentage,
         )
 
@@ -488,7 +488,6 @@ class DiagnosticsService:
         }
 
         result_answers = []
-
         strengths = []
         weaknesses = []
 
@@ -521,15 +520,15 @@ class DiagnosticsService:
         strengths = list(dict.fromkeys(strengths))
         weaknesses = list(dict.fromkeys(weaknesses))
 
-        topic_status = DiagnosticsRepository.get_topic_status(
+        chapter_status = DiagnosticsRepository.get_chapter_status(
             db,
             current_user.id,
-            session.topic_id,
+            session.chapter_id,
         )
 
         completion_status = (
-            topic_status.completion_status
-            if topic_status
+            chapter_status.completion_status
+            if chapter_status
             else None
         )
 
@@ -543,25 +542,25 @@ class DiagnosticsService:
         }
 
     @staticmethod
-    def get_topic_status(
+    def get_chapter_status(
         db: Session,
-        topic_id: uuid.UUID,
+        chapter_id: uuid.UUID,
         current_user: User,
     ) -> dict:
-        DiagnosticsService._get_active_topic(
+        DiagnosticsService._get_active_chapter(
             db,
-            topic_id,
+            chapter_id,
         )
 
-        status_record = DiagnosticsRepository.get_topic_status(
+        status_record = DiagnosticsRepository.get_chapter_status(
             db,
             current_user.id,
-            topic_id,
+            chapter_id,
         )
 
         if not status_record:
             return {
-                "topic_id": topic_id,
+                "chapter_id": chapter_id,
                 "completion_status": "not_started",
                 "latest_score": None,
                 "best_score": None,
@@ -572,7 +571,7 @@ class DiagnosticsService:
             }
 
         return {
-            "topic_id": topic_id,
+            "chapter_id": chapter_id,
             "completion_status": status_record.completion_status,
             "latest_score": status_record.latest_score,
             "best_score": status_record.best_score,
@@ -593,24 +592,24 @@ class DiagnosticsService:
             subject_id,
         )
 
-        if not subject:
+        if not subject or not subject.is_active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Subject not found",
             )
 
-        topic_ids = DiagnosticsRepository.list_active_topic_ids_for_subject(
+        chapter_ids = DiagnosticsRepository.list_active_chapter_ids_for_subject(
             db,
             subject_id,
         )
 
-        statuses = DiagnosticsRepository.list_statuses_for_topics(
+        statuses = DiagnosticsRepository.list_statuses_for_chapters(
             db,
             current_user.id,
-            topic_ids,
+            chapter_ids,
         )
 
-        completed_topics = sum(
+        completed_chapters = sum(
             1
             for status_record in statuses
             if status_record.completion_status == "completed"
@@ -632,16 +631,40 @@ class DiagnosticsService:
             )
         )
 
-        total_topics = len(topic_ids)
+        total_chapters = len(chapter_ids)
 
         return {
             "subject_id": subject_id,
-            "total_topics": total_topics,
-            "completed_topics": completed_topics,
+            "total_chapters": total_chapters,
+            "completed_chapters": completed_chapters,
             "is_completed": (
-                total_topics > 0
-                and completed_topics == total_topics
+                total_chapters > 0
+                and completed_chapters == total_chapters
             ),
             "strength_labels": strength_labels,
             "weakness_labels": weakness_labels,
+        }
+
+    @staticmethod
+    def delete_session(
+        db: Session,
+        session_id: uuid.UUID,
+        current_user: User,
+    ) -> dict:
+        session = DiagnosticsService._get_session_for_user(
+            db,
+            session_id,
+            current_user,
+        )
+
+        deleted_id = session.id
+
+        DiagnosticsRepository.delete_session(
+            db,
+            session,
+        )
+
+        return {
+            "deleted_id": deleted_id,
+            "message": "Diagnostic session deleted successfully",
         }

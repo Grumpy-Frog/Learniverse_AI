@@ -7,16 +7,17 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.model import User
-from app.modules.diagnostics.model import DiagnosticQuestion
-from app.modules.diagnostics.repository import DiagnosticsRepository
+from app.modules.diagnostics.model import DiagnosticQuestion, DiagnosticSession
 from app.modules.diagnostics.schema import (
+    ChapterStatusResponse,
+    DeleteDiagnosticResponse,
     DiagnosticGenerateRequest,
+    DiagnosticQuestionResponse,
     DiagnosticResultResponse,
-    GeneratedAssessmentResponse,
-    SafeQuestionResponse,
+    DiagnosticSessionResponse,
+    PublicDiagnosticQuestionResponse,
     SessionSubmitRequest,
     SubjectSummaryResponse,
-    TopicStatusResponse,
 )
 from app.modules.diagnostics.service import DiagnosticsService
 
@@ -27,74 +28,65 @@ router = APIRouter(
 )
 
 
-def build_generated_response(
-    db: Session,
-    session,
-) -> GeneratedAssessmentResponse:
-    questions = DiagnosticsRepository.list_questions(
-        db,
-        session.id,
-    )
-
-    return GeneratedAssessmentResponse(
-        session=session,
-        questions=questions,
-    )
-
-
 @router.post(
-    "/topics/{topic_id}/understanding-check/generate",
-    response_model=GeneratedAssessmentResponse,
+    "/chapters/{chapter_id}/understanding-check/generate",
+    response_model=DiagnosticSessionResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def generate_understanding_check(
-    topic_id: uuid.UUID,
+    chapter_id: uuid.UUID,
     payload: DiagnosticGenerateRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> GeneratedAssessmentResponse:
-    session = await DiagnosticsService.generate_understanding_check(
+) -> DiagnosticSession:
+    return await DiagnosticsService.generate_understanding_check(
         db,
-        topic_id,
+        chapter_id,
         payload,
         current_user,
-    )
-
-    return build_generated_response(
-        db,
-        session,
     )
 
 
 @router.post(
-    "/topics/{topic_id}/quiz/generate",
-    response_model=GeneratedAssessmentResponse,
+    "/chapters/{chapter_id}/quiz/generate",
+    response_model=DiagnosticSessionResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def generate_diagnostic_quiz(
-    topic_id: uuid.UUID,
+async def generate_chapter_quiz(
+    chapter_id: uuid.UUID,
     payload: DiagnosticGenerateRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> GeneratedAssessmentResponse:
-    session = await DiagnosticsService.generate_diagnostic_quiz(
+) -> DiagnosticSession:
+    return await DiagnosticsService.generate_chapter_quiz(
         db,
-        topic_id,
+        chapter_id,
         payload,
         current_user,
-    )
-
-    return build_generated_response(
-        db,
-        session,
     )
 
 
 @router.get(
     "/sessions/{session_id}/questions",
-    response_model=list[SafeQuestionResponse],
+    response_model=list[PublicDiagnosticQuestionResponse],
 )
-def get_session_questions(
+def get_questions(
+    session_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> list[DiagnosticQuestion]:
+    return DiagnosticsService.get_questions(
+        db,
+        session_id,
+        current_user,
+    )
+
+
+@router.get(
+    "/sessions/{session_id}/questions/admin-view",
+    response_model=list[DiagnosticQuestionResponse],
+)
+def get_questions_admin_view(
     session_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
@@ -108,24 +100,18 @@ def get_session_questions(
 
 @router.post(
     "/sessions/{session_id}/submit",
-    response_model=DiagnosticResultResponse,
+    response_model=DiagnosticSessionResponse,
 )
 async def submit_session(
     session_id: uuid.UUID,
     payload: SessionSubmitRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> dict:
-    await DiagnosticsService.submit_session(
+) -> DiagnosticSession:
+    return await DiagnosticsService.submit_session(
         db,
         session_id,
         payload,
-        current_user,
-    )
-
-    return DiagnosticsService.get_result(
-        db,
-        session_id,
         current_user,
     )
 
@@ -134,7 +120,7 @@ async def submit_session(
     "/sessions/{session_id}/result",
     response_model=DiagnosticResultResponse,
 )
-def get_session_result(
+def get_result(
     session_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
@@ -146,18 +132,34 @@ def get_session_result(
     )
 
 
-@router.get(
-    "/me/topics/{topic_id}/status",
-    response_model=TopicStatusResponse,
+@router.delete(
+    "/sessions/{session_id}",
+    response_model=DeleteDiagnosticResponse,
 )
-def get_my_topic_status(
-    topic_id: uuid.UUID,
+def delete_session(
+    session_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
-    return DiagnosticsService.get_topic_status(
+    return DiagnosticsService.delete_session(
         db,
-        topic_id,
+        session_id,
+        current_user,
+    )
+
+
+@router.get(
+    "/me/chapters/{chapter_id}/status",
+    response_model=ChapterStatusResponse,
+)
+def get_chapter_status(
+    chapter_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    return DiagnosticsService.get_chapter_status(
+        db,
+        chapter_id,
         current_user,
     )
 
@@ -166,7 +168,7 @@ def get_my_topic_status(
     "/me/subjects/{subject_id}/summary",
     response_model=SubjectSummaryResponse,
 )
-def get_my_subject_summary(
+def get_subject_summary(
     subject_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],

@@ -9,25 +9,15 @@ from alembic import context
 from app.core.config import settings
 from app.db.base import Base
 
-from app.modules.auth.model import User
-
-from app.modules.catalog.model import Chapter, GradeLevel, Subject
-from app.modules.simulation.router import router as simulation_router
-from app.modules.documents.model import Document, DocumentPage
-from app.modules.tutor.model import TutorConversation, TutorMessage
-from app.modules.rag.model import DocumentChunk
-from app.modules.diagnostics.model import (
-    DiagnosticAnswer,
-    DiagnosticQuestion,
-    DiagnosticSession,
-    UserTopicStatus,
-)
-from app.modules.remediation.model import (
-    RemediationContent,
-    RemediationRecheck,
-    RemediationSession,
-)
-from app.modules.blog.model import BlogPost
+from app.modules.auth import model as auth_model
+from app.modules.catalog import model as catalog_model
+from app.modules.documents import model as documents_model
+from app.modules.rag import model as rag_model
+from app.modules.tutor import model as tutor_model
+from app.modules.diagnostics import model as diagnostics_model
+from app.modules.remediation import model as remediation_model
+from app.modules.simulation import model as simulation_model
+from app.modules.blog import model as blog_model
 
 
 

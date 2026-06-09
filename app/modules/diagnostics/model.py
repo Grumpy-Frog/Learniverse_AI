@@ -1,6 +1,3 @@
-
-from __future__ import annotations
-
 import uuid
 from datetime import datetime
 
@@ -31,7 +28,7 @@ class DiagnosticSession(Base):
             name="ck_diagnostic_session_language",
         ),
         CheckConstraint(
-            "assessment_type IN ('understanding_check', 'diagnostic_quiz', 'recheck')",
+            "assessment_type IN ('understanding_check', 'chapter_quiz', 'recheck')",
             name="ck_diagnostic_session_assessment_type",
         ),
         CheckConstraint(
@@ -39,8 +36,7 @@ class DiagnosticSession(Base):
             name="ck_diagnostic_session_status",
         ),
         CheckConstraint(
-            "outcome IS NULL OR outcome IN "
-            "('understood', 'needs_diagnostic', 'strong', 'needs_practice')",
+            "outcome IS NULL OR outcome IN ('understood', 'needs_diagnostic', 'strong', 'needs_practice')",
             name="ck_diagnostic_session_outcome",
         ),
     )
@@ -57,8 +53,8 @@ class DiagnosticSession(Base):
         index=True,
     )
 
-    topic_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("topics.id", ondelete="CASCADE"),
+    chapter_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("chapters.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -72,6 +68,7 @@ class DiagnosticSession(Base):
     language: Mapped[str] = mapped_column(
         String(5),
         nullable=False,
+        default="en",
     )
 
     assessment_type: Mapped[str] = mapped_column(
@@ -80,7 +77,7 @@ class DiagnosticSession(Base):
     )
 
     status: Mapped[str] = mapped_column(
-        String(20),
+        String(30),
         nullable=False,
         default="generated",
     )
@@ -101,7 +98,7 @@ class DiagnosticSession(Base):
     )
 
     outcome: Mapped[str | None] = mapped_column(
-        String(30),
+        String(40),
         nullable=True,
     )
 
@@ -116,12 +113,14 @@ class DiagnosticSession(Base):
         nullable=True,
     )
 
-    questions: Mapped[list[DiagnosticQuestion]] = relationship(
+    questions: Mapped[list["DiagnosticQuestion"]] = relationship(
+        "DiagnosticQuestion",
         back_populates="session",
         cascade="all, delete-orphan",
     )
 
-    answers: Mapped[list[DiagnosticAnswer]] = relationship(
+    answers: Mapped[list["DiagnosticAnswer"]] = relationship(
+        "DiagnosticAnswer",
         back_populates="session",
         cascade="all, delete-orphan",
     )
@@ -134,11 +133,6 @@ class DiagnosticQuestion(Base):
         CheckConstraint(
             "question_type IN ('mcq', 'short_answer')",
             name="ck_diagnostic_question_type",
-        ),
-        UniqueConstraint(
-            "session_id",
-            "display_order",
-            name="uq_diagnostic_question_session_order",
         ),
     )
 
@@ -155,7 +149,7 @@ class DiagnosticQuestion(Base):
     )
 
     question_type: Mapped[str] = mapped_column(
-        String(20),
+        String(30),
         nullable=False,
     )
 
@@ -164,7 +158,7 @@ class DiagnosticQuestion(Base):
         nullable=False,
     )
 
-    options: Mapped[dict[str, str] | None] = mapped_column(
+    options: Mapped[dict | None] = mapped_column(
         JSONB,
         nullable=True,
     )
@@ -180,18 +174,19 @@ class DiagnosticQuestion(Base):
     )
 
     skill_label: Mapped[str] = mapped_column(
-        String(80),
+        String(120),
         nullable=False,
     )
 
-    explanation: Mapped[str] = mapped_column(
+    explanation: Mapped[str | None] = mapped_column(
         Text,
-        nullable=False,
+        nullable=True,
     )
 
     display_order: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
+        default=1,
     )
 
     max_score: Mapped[float] = mapped_column(
@@ -206,29 +201,20 @@ class DiagnosticQuestion(Base):
         nullable=False,
     )
 
-    session: Mapped[DiagnosticSession] = relationship(
+    session: Mapped["DiagnosticSession"] = relationship(
+        "DiagnosticSession",
         back_populates="questions",
+    )
+
+    answers: Mapped[list["DiagnosticAnswer"]] = relationship(
+        "DiagnosticAnswer",
+        back_populates="question",
+        cascade="all, delete-orphan",
     )
 
 
 class DiagnosticAnswer(Base):
     __tablename__ = "diagnostic_answers"
-
-    __table_args__ = (
-        CheckConstraint(
-            "evaluation_method IN ('automatic', 'deepseek')",
-            name="ck_diagnostic_answer_evaluation_method",
-        ),
-        CheckConstraint(
-            "confidence IS NULL OR confidence IN ('low', 'medium', 'high')",
-            name="ck_diagnostic_answer_confidence",
-        ),
-        UniqueConstraint(
-            "session_id",
-            "question_id",
-            name="uq_diagnostic_answer_session_question",
-        ),
-    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -269,17 +255,17 @@ class DiagnosticAnswer(Base):
     )
 
     detected_weakness: Mapped[str | None] = mapped_column(
-        String(80),
+        String(120),
         nullable=True,
     )
 
     confidence: Mapped[str | None] = mapped_column(
-        String(20),
+        String(30),
         nullable=True,
     )
 
     evaluation_method: Mapped[str] = mapped_column(
-        String(20),
+        String(30),
         nullable=False,
     )
 
@@ -289,23 +275,29 @@ class DiagnosticAnswer(Base):
         nullable=False,
     )
 
-    session: Mapped[DiagnosticSession] = relationship(
+    session: Mapped["DiagnosticSession"] = relationship(
+        "DiagnosticSession",
+        back_populates="answers",
+    )
+
+    question: Mapped["DiagnosticQuestion"] = relationship(
+        "DiagnosticQuestion",
         back_populates="answers",
     )
 
 
-class UserTopicStatus(Base):
-    __tablename__ = "user_topic_status"
+class UserChapterStatus(Base):
+    __tablename__ = "user_chapter_statuses"
 
     __table_args__ = (
-        CheckConstraint(
-            "completion_status IN ('not_started', 'needs_practice', 'completed')",
-            name="ck_user_topic_completion_status",
-        ),
         UniqueConstraint(
             "user_id",
-            "topic_id",
-            name="uq_user_topic_status",
+            "chapter_id",
+            name="uq_user_chapter_status",
+        ),
+        CheckConstraint(
+            "completion_status IN ('not_started', 'needs_practice', 'completed')",
+            name="ck_user_chapter_completion_status",
         ),
     )
 
@@ -321,8 +313,8 @@ class UserTopicStatus(Base):
         index=True,
     )
 
-    topic_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("topics.id", ondelete="CASCADE"),
+    chapter_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("chapters.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -343,13 +335,13 @@ class UserTopicStatus(Base):
         nullable=True,
     )
 
-    strength_labels: Mapped[list[str]] = mapped_column(
+    strength_labels: Mapped[list] = mapped_column(
         JSONB,
         nullable=False,
         default=list,
     )
 
-    weakness_labels: Mapped[list[str]] = mapped_column(
+    weakness_labels: Mapped[list] = mapped_column(
         JSONB,
         nullable=False,
         default=list,

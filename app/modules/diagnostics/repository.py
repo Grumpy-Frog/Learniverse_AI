@@ -4,12 +4,12 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.catalog.model import Chapter, Topic
+from app.modules.catalog.model import Chapter
 from app.modules.diagnostics.model import (
     DiagnosticAnswer,
     DiagnosticQuestion,
     DiagnosticSession,
-    UserTopicStatus,
+    UserChapterStatus,
 )
 
 
@@ -46,6 +46,14 @@ class DiagnosticsRepository:
         )
 
     @staticmethod
+    def delete_session(
+        db: Session,
+        session: DiagnosticSession,
+    ) -> None:
+        db.delete(session)
+        db.commit()
+
+    @staticmethod
     def list_questions(
         db: Session,
         session_id: uuid.UUID,
@@ -72,15 +80,15 @@ class DiagnosticsRepository:
         )
 
     @staticmethod
-    def get_topic_status(
+    def get_chapter_status(
         db: Session,
         user_id: uuid.UUID,
-        topic_id: uuid.UUID,
-    ) -> UserTopicStatus | None:
+        chapter_id: uuid.UUID,
+    ) -> UserChapterStatus | None:
         return db.scalar(
-            select(UserTopicStatus).where(
-                UserTopicStatus.user_id == user_id,
-                UserTopicStatus.topic_id == topic_id,
+            select(UserChapterStatus).where(
+                UserChapterStatus.user_id == user_id,
+                UserChapterStatus.chapter_id == chapter_id,
             )
         )
 
@@ -94,7 +102,7 @@ class DiagnosticsRepository:
         outcome: str,
         strengths: list[str],
         weaknesses: list[str],
-        update_topic_status: bool,
+        update_chapter_status: bool,
         pass_percentage: float,
     ) -> DiagnosticSession:
         submitted_at = datetime.now(timezone.utc)
@@ -107,17 +115,17 @@ class DiagnosticsRepository:
         session.outcome = outcome
         session.submitted_at = submitted_at
 
-        if update_topic_status:
-            status_record = DiagnosticsRepository.get_topic_status(
+        if update_chapter_status:
+            status_record = DiagnosticsRepository.get_chapter_status(
                 db,
                 session.user_id,
-                session.topic_id,
+                session.chapter_id,
             )
 
             if status_record is None:
-                status_record = UserTopicStatus(
+                status_record = UserChapterStatus(
                     user_id=session.user_id,
-                    topic_id=session.topic_id,
+                    chapter_id=session.chapter_id,
                     completion_status="not_started",
                     strength_labels=[],
                     weakness_labels=[],
@@ -146,36 +154,33 @@ class DiagnosticsRepository:
         return session
 
     @staticmethod
-    def list_active_topic_ids_for_subject(
+    def list_active_chapter_ids_for_subject(
         db: Session,
         subject_id: uuid.UUID,
     ) -> list[uuid.UUID]:
         return list(
             db.scalars(
-                select(Topic.id)
-                .join(Chapter, Topic.chapter_id == Chapter.id)
-                .where(
+                select(Chapter.id).where(
                     Chapter.subject_id == subject_id,
                     Chapter.is_active.is_(True),
-                    Topic.is_active.is_(True),
                 )
             ).all()
         )
 
     @staticmethod
-    def list_statuses_for_topics(
+    def list_statuses_for_chapters(
         db: Session,
         user_id: uuid.UUID,
-        topic_ids: list[uuid.UUID],
-    ) -> list[UserTopicStatus]:
-        if not topic_ids:
+        chapter_ids: list[uuid.UUID],
+    ) -> list[UserChapterStatus]:
+        if not chapter_ids:
             return []
 
         return list(
             db.scalars(
-                select(UserTopicStatus).where(
-                    UserTopicStatus.user_id == user_id,
-                    UserTopicStatus.topic_id.in_(topic_ids),
+                select(UserChapterStatus).where(
+                    UserChapterStatus.user_id == user_id,
+                    UserChapterStatus.chapter_id.in_(chapter_ids),
                 )
             ).all()
         )
