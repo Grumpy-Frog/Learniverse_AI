@@ -1,4 +1,3 @@
-
 import uuid
 from datetime import datetime
 from typing import Literal
@@ -12,8 +11,6 @@ SLUG_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 
 
 class SimulationCreateRequest(BaseModel):
-    topic_id: uuid.UUID | None = None
-
     title: str = Field(min_length=2, max_length=200)
 
     slug: str = Field(
@@ -45,8 +42,6 @@ class SimulationCreateRequest(BaseModel):
 
 
 class SimulationUpdateRequest(BaseModel):
-    topic_id: uuid.UUID | None = None
-
     title: str | None = Field(
         default=None,
         min_length=2,
@@ -79,7 +74,6 @@ class SimulationUpdateRequest(BaseModel):
 class SimulationResponse(BaseModel):
     id: uuid.UUID
     chapter_id: uuid.UUID
-    topic_id: uuid.UUID | None
     title: str
     slug: str
     description: str | None
@@ -92,3 +86,8 @@ class SimulationResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DeleteSimulationResponse(BaseModel):
+    deleted_id: uuid.UUID
+    message: str

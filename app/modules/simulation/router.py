@@ -9,6 +9,7 @@ from app.modules.auth.dependencies import get_current_user, require_admin
 from app.modules.auth.model import User
 from app.modules.simulation.model import Simulation
 from app.modules.simulation.schema import (
+    DeleteSimulationResponse,
     SimulationCreateRequest,
     SimulationResponse,
     SimulationUpdateRequest,
@@ -55,21 +56,6 @@ def list_chapter_simulations(
     )
 
 
-@router.get(
-    "/topics/{topic_id}",
-    response_model=list[SimulationResponse],
-)
-def list_topic_simulations(
-    topic_id: uuid.UUID,
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> list[Simulation]:
-    return SimulationService.list_topic_simulations(
-        db,
-        topic_id,
-    )
-
-
 @router.patch(
     "/{simulation_id}",
     response_model=SimulationResponse,
@@ -84,6 +70,21 @@ def update_simulation(
         db,
         simulation_id,
         payload,
+    )
+
+
+@router.delete(
+    "/{simulation_id}",
+    response_model=DeleteSimulationResponse,
+)
+def delete_simulation(
+    simulation_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    admin_user: Annotated[User, Depends(require_admin)],
+) -> dict:
+    return SimulationService.delete_simulation(
+        db,
+        simulation_id,
     )
 
 

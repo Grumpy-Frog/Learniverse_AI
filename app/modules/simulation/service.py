@@ -19,30 +19,21 @@ class SimulationService:
         chapter_id: uuid.UUID,
         payload: SimulationCreateRequest,
     ) -> Simulation:
-        chapter = CatalogRepository.get_chapter_by_id(db, chapter_id)
+        chapter = CatalogRepository.get_chapter_by_id(
+            db,
+            chapter_id,
+        )
 
-        if not chapter:
+        if not chapter or not chapter.is_active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Chapter not found",
             )
 
-        if payload.topic_id:
-            topic = CatalogRepository.get_topic_by_id(db, payload.topic_id)
-
-            if not topic:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Topic not found",
-                )
-
-            if topic.chapter_id != chapter_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Topic does not belong to the selected chapter",
-                )
-
-        existing = SimulationRepository.get_by_slug(db, payload.slug)
+        existing = SimulationRepository.get_by_slug(
+            db,
+            payload.slug,
+        )
 
         if existing:
             raise HTTPException(
@@ -55,7 +46,10 @@ class SimulationService:
             **payload.model_dump(),
         )
 
-        return SimulationRepository.create(db, simulation)
+        return SimulationRepository.create(
+            db,
+            simulation,
+        )
 
     @staticmethod
     def update_simulation(
@@ -63,7 +57,10 @@ class SimulationService:
         simulation_id: uuid.UUID,
         payload: SimulationUpdateRequest,
     ) -> Simulation:
-        simulation = SimulationRepository.get_by_id(db, simulation_id)
+        simulation = SimulationRepository.get_by_id(
+            db,
+            simulation_id,
+        )
 
         if not simulation:
             raise HTTPException(
@@ -71,67 +68,48 @@ class SimulationService:
                 detail="Simulation not found",
             )
 
-        update_data = payload.model_dump(exclude_unset=True)
-
-        if "topic_id" in update_data and update_data["topic_id"] is not None:
-            topic = CatalogRepository.get_topic_by_id(
-                db,
-                update_data["topic_id"],
-            )
-
-            if not topic:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Topic not found",
-                )
-
-            if topic.chapter_id != simulation.chapter_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Topic does not belong to the simulation chapter",
-                )
+        update_data = payload.model_dump(
+            exclude_unset=True,
+        )
 
         for field, value in update_data.items():
             setattr(simulation, field, value)
 
-        return SimulationRepository.update(db, simulation)
+        return SimulationRepository.update(
+            db,
+            simulation,
+        )
 
     @staticmethod
     def list_chapter_simulations(
         db: Session,
         chapter_id: uuid.UUID,
     ) -> list[Simulation]:
-        chapter = CatalogRepository.get_chapter_by_id(db, chapter_id)
+        chapter = CatalogRepository.get_chapter_by_id(
+            db,
+            chapter_id,
+        )
 
-        if not chapter:
+        if not chapter or not chapter.is_active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Chapter not found",
             )
 
-        return SimulationRepository.list_by_chapter(db, chapter_id)
-
-    @staticmethod
-    def list_topic_simulations(
-        db: Session,
-        topic_id: uuid.UUID,
-    ) -> list[Simulation]:
-        topic = CatalogRepository.get_topic_by_id(db, topic_id)
-
-        if not topic:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Topic not found",
-            )
-
-        return SimulationRepository.list_by_topic(db, topic_id)
+        return SimulationRepository.list_by_chapter(
+            db,
+            chapter_id,
+        )
 
     @staticmethod
     def get_simulation(
         db: Session,
         simulation_id: uuid.UUID,
     ) -> Simulation:
-        simulation = SimulationRepository.get_by_id(db, simulation_id)
+        simulation = SimulationRepository.get_by_id(
+            db,
+            simulation_id,
+        )
 
         if not simulation or not simulation.is_active:
             raise HTTPException(
@@ -140,3 +118,31 @@ class SimulationService:
             )
 
         return simulation
+
+    @staticmethod
+    def delete_simulation(
+        db: Session,
+        simulation_id: uuid.UUID,
+    ) -> dict:
+        simulation = SimulationRepository.get_by_id(
+            db,
+            simulation_id,
+        )
+
+        if not simulation or not simulation.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Simulation not found",
+            )
+
+        deleted_id = simulation.id
+
+        SimulationRepository.soft_delete(
+            db,
+            simulation,
+        )
+
+        return {
+            "deleted_id": deleted_id,
+            "message": "Simulation deleted successfully",
+        }

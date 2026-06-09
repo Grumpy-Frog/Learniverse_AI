@@ -1,4 +1,3 @@
-
 import uuid
 from datetime import datetime
 
@@ -37,12 +36,6 @@ class Simulation(Base):
     chapter_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("chapters.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
-    )
-
-    topic_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("topics.id", ondelete="SET NULL"),
-        nullable=True,
         index=True,
     )
 
