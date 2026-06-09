@@ -11,6 +11,7 @@ from app.modules.rag.router import router as rag_router
 from app.modules.diagnostics.router import router as diagnostics_router
 from app.modules.remediation.router import router as remediation_router
 from app.modules.blog.router import router as blog_router
+from app.modules.dashboard.router import router as dashboard_router
 
 
 app = FastAPI(
@@ -35,7 +36,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
-
 
 
 @app.get("/api/v1/health", tags=["Health"])
@@ -86,5 +86,10 @@ app.include_router(
 
 app.include_router(
     blog_router,
+    prefix=settings.api_prefix,
+)
+
+app.include_router(
+    dashboard_router,
     prefix=settings.api_prefix,
 )
