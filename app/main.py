@@ -13,7 +13,7 @@ from app.modules.remediation.router import router as remediation_router
 from app.modules.blog.router import router as blog_router
 from app.modules.dashboard.router import router as dashboard_router
 from app.modules.custom_tutor.router import router as custom_tutor_router
-
+from app.modules.study_tools.router import router as study_tools_router
 
 app = FastAPI(
     title=settings.app_name,
@@ -58,7 +58,6 @@ app.include_router(
     simulation_router,
     prefix=settings.api_prefix,
 )
-
 
 app.include_router(
     tutor_router,
