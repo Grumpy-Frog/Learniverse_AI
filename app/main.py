@@ -12,8 +12,7 @@ from app.modules.diagnostics.router import router as diagnostics_router
 from app.modules.remediation.router import router as remediation_router
 from app.modules.blog.router import router as blog_router
 from app.modules.dashboard.router import router as dashboard_router
-from app.modules.inbox.router import router as inbox_router
-
+from app.modules.custom_tutor.router import router as custom_tutor_router
 
 
 app = FastAPI(
@@ -97,6 +96,6 @@ app.include_router(
 )
 
 app.include_router(
-    inbox_router,
+    custom_tutor_router,
     prefix=settings.api_prefix,
 )

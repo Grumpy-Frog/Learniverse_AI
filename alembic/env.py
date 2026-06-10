@@ -18,9 +18,7 @@ from app.modules.diagnostics import model as diagnostics_model
 from app.modules.remediation import model as remediation_model
 from app.modules.simulation import model as simulation_model
 from app.modules.blog import model as blog_model
-from app.modules.inbox import model as inbox_model
-
-
+from app.modules.custom_tutor import model as custom_tutor_model
 
 
 # this is the Alembic Config object, which provides

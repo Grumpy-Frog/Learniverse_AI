@@ -6,6 +6,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Text,
     func,
@@ -16,21 +17,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 
-class InboxThread(Base):
-    __tablename__ = "inbox_threads"
+class CustomTutorChat(Base):
+    __tablename__ = "custom_tutor_chats"
 
     __table_args__ = (
         CheckConstraint(
-            "source IN ('custom_tutor', 'help', 'feedback')",
-            name="ck_inbox_thread_source",
-        ),
-        CheckConstraint(
-            "status IN ('open', 'answered', 'closed')",
-            name="ck_inbox_thread_status",
-        ),
-        CheckConstraint(
-            "priority IN ('low', 'normal', 'high')",
-            name="ck_inbox_thread_priority",
+            "language IN ('en', 'bn')",
+            name="ck_custom_tutor_chat_language",
         ),
     )
 
@@ -40,14 +33,14 @@ class InboxThread(Base):
         default=uuid.uuid4,
     )
 
-    student_id: Mapped[uuid.UUID] = mapped_column(
+    user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
 
-    assigned_admin_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"),
+    grade_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("grade_levels.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -67,24 +60,25 @@ class InboxThread(Base):
     title: Mapped[str] = mapped_column(
         String(200),
         nullable=False,
+        default="New chat",
     )
 
-    source: Mapped[str] = mapped_column(
-        String(30),
+    language: Mapped[str] = mapped_column(
+        String(5),
         nullable=False,
-        default="custom_tutor",
+        default="en",
     )
 
-    status: Mapped[str] = mapped_column(
-        String(30),
+    is_archived: Mapped[bool] = mapped_column(
+        Boolean,
         nullable=False,
-        default="open",
+        default=False,
     )
 
-    priority: Mapped[str] = mapped_column(
-        String(20),
+    message_count: Mapped[int] = mapped_column(
+        Integer,
         nullable=False,
-        default="normal",
+        default=0,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -100,20 +94,20 @@ class InboxThread(Base):
         nullable=False,
     )
 
-    messages: Mapped[list["InboxMessage"]] = relationship(
-        "InboxMessage",
-        back_populates="thread",
+    messages: Mapped[list["CustomTutorMessage"]] = relationship(
+        "CustomTutorMessage",
+        back_populates="chat",
         cascade="all, delete-orphan",
     )
 
 
-class InboxMessage(Base):
-    __tablename__ = "inbox_messages"
+class CustomTutorMessage(Base):
+    __tablename__ = "custom_tutor_messages"
 
     __table_args__ = (
         CheckConstraint(
-            "sender_role IN ('student', 'admin', 'system')",
-            name="ck_inbox_message_sender_role",
+            "role IN ('user', 'assistant')",
+            name="ck_custom_tutor_message_role",
         ),
     )
 
@@ -123,32 +117,35 @@ class InboxMessage(Base):
         default=uuid.uuid4,
     )
 
-    thread_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("inbox_threads.id", ondelete="CASCADE"),
+    chat_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("custom_tutor_chats.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
 
-    sender_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    sender_role: Mapped[str] = mapped_column(
+    role: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
     )
 
-    body: Mapped[str] = mapped_column(
+    content: Mapped[str] = mapped_column(
         Text,
         nullable=False,
     )
 
-    is_internal: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=False,
+    prompt_tokens: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    completion_tokens: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    finish_reason: Mapped[str | None] = mapped_column(
+        String(80),
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -157,7 +154,7 @@ class InboxMessage(Base):
         nullable=False,
     )
 
-    thread: Mapped["InboxThread"] = relationship(
-        "InboxThread",
+    chat: Mapped["CustomTutorChat"] = relationship(
+        "CustomTutorChat",
         back_populates="messages",
     )
