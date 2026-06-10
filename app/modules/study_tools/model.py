@@ -196,7 +196,17 @@ class StudyArtifact(Base):
             name="ck_study_artifact_source_type",
         ),
         CheckConstraint(
-            "artifact_type IN ('mind_map', 'worksheet', 'formula_sheet', 'important_questions')",
+            "artifact_type IN ("
+            "'mind_map', "
+            "'worksheet', "
+            "'formula_sheet', "
+            "'important_questions', "
+            "'key_points', "
+            "'glossary', "
+            "'revision_checklist', "
+            "'study_plan', "
+            "'mnemonic_set'"
+            ")",
             name="ck_study_artifact_type",
         ),
     )

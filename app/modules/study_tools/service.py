@@ -15,13 +15,19 @@ from app.modules.study_tools.model import AiNote, Flashcard, FlashcardDeck, Stud
 
 from app.modules.study_tools.prompts import (
     flashcard_generation_messages,
+    formula_extraction_messages,
+    glossary_messages,
+    important_questions_messages,
+    key_points_messages,
+    mind_map_generation_messages,
+    mnemonic_messages,
     note_generation_messages,
     pdf_summary_messages,
-    mind_map_generation_messages,
+    revision_checklist_messages,
+    study_plan_messages,
     worksheet_generation_messages,
-    formula_extraction_messages,
-    important_questions_messages,
 )
+
 from app.modules.study_tools.repository import StudyToolsRepository
 
 from app.modules.study_tools.schema import (
@@ -45,7 +51,8 @@ from app.modules.study_tools.model import (
     StudyDocument,
 )
 
-
+import pymupdf
+from fastapi import UploadFile
 
 
 
@@ -535,247 +542,474 @@ class StudyToolsService:
 
         return {"deleted_id": deck_id, "message": "Flashcard deck deleted successfully"}
     
-        @staticmethod
-        async def _generate_artifact(
-            db: Session,
-            payload: StudyArtifactGenerateRequest,
-            current_user: User,
-            artifact_type: str,
-        ) -> StudyArtifact:
-            source_text, context_ids = StudyToolsService._get_source_text(
+    @staticmethod
+    async def _generate_artifact(
+        db: Session,
+        payload: StudyArtifactGenerateRequest,
+        current_user: User,
+        artifact_type: str,
+    ) -> StudyArtifact:
+        source_text, context_ids = StudyToolsService._get_source_text(
+            db,
+            current_user,
+            payload.source_type,
+            payload.source_id,
+            payload.raw_text,
+            payload.language,
+        )
+
+        if payload.grade_id or payload.subject_id or payload.chapter_id:
+            grade, subject, chapter = StudyToolsService._validate_context(
                 db,
-                current_user,
-                payload.source_type,
-                payload.source_id,
-                payload.raw_text,
-                payload.language,
+                payload.grade_id,
+                payload.subject_id,
+                payload.chapter_id,
+            )
+            context_ids = StudyToolsService._source_context_ids(
+                grade,
+                subject,
+                chapter,
             )
 
-            if payload.grade_id or payload.subject_id or payload.chapter_id:
-                grade, subject, chapter = StudyToolsService._validate_context(
-                    db,
-                    payload.grade_id,
-                    payload.subject_id,
-                    payload.chapter_id,
-                )
-                context_ids = StudyToolsService._source_context_ids(
-                    grade,
-                    subject,
-                    chapter,
-                )
+        trimmed_text = StudyToolsService._trim_text(source_text)
 
-            trimmed_text = StudyToolsService._trim_text(source_text)
+        if artifact_type == "mind_map":
+            messages = mind_map_generation_messages(
+                source_text=trimmed_text,
+                language=payload.language,
+                item_count=payload.item_count,
+                instruction=payload.instruction,
+            )
+            max_tokens = 1600
 
-            if artifact_type == "mind_map":
-                messages = mind_map_generation_messages(
-                    source_text=trimmed_text,
-                    language=payload.language,
-                    item_count=payload.item_count,
-                    instruction=payload.instruction,
-                )
-                max_tokens = 1600
+        elif artifact_type == "worksheet":
+            messages = worksheet_generation_messages(
+                source_text=trimmed_text,
+                language=payload.language,
+                item_count=payload.item_count,
+                difficulty=payload.difficulty,
+                instruction=payload.instruction,
+            )
+            max_tokens = 2200
 
-            elif artifact_type == "worksheet":
-                messages = worksheet_generation_messages(
-                    source_text=trimmed_text,
-                    language=payload.language,
-                    item_count=payload.item_count,
-                    difficulty=payload.difficulty,
-                    instruction=payload.instruction,
-                )
-                max_tokens = 2200
+        elif artifact_type == "formula_sheet":
+            messages = formula_extraction_messages(
+                source_text=trimmed_text,
+                language=payload.language,
+                item_count=payload.item_count,
+                instruction=payload.instruction,
+            )
+            max_tokens = 1800
 
-            elif artifact_type == "formula_sheet":
-                messages = formula_extraction_messages(
-                    source_text=trimmed_text,
-                    language=payload.language,
-                    item_count=payload.item_count,
-                    instruction=payload.instruction,
-                )
-                max_tokens = 1800
+        elif artifact_type == "important_questions":
+            messages = important_questions_messages(
+                source_text=trimmed_text,
+                language=payload.language,
+                item_count=payload.item_count,
+                difficulty=payload.difficulty,
+                instruction=payload.instruction,
+            )
+            max_tokens = 2200
+        
+        elif artifact_type == "key_points":
+            messages = key_points_messages(
+                source_text=trimmed_text,
+                language=payload.language,
+                item_count=payload.item_count,
+                instruction=payload.instruction,
+            )
+            max_tokens = 1400
 
-            elif artifact_type == "important_questions":
-                messages = important_questions_messages(
-                    source_text=trimmed_text,
-                    language=payload.language,
-                    item_count=payload.item_count,
-                    difficulty=payload.difficulty,
-                    instruction=payload.instruction,
-                )
-                max_tokens = 2200
+        elif artifact_type == "glossary":
+            messages = glossary_messages(
+                source_text=trimmed_text,
+                language=payload.language,
+                item_count=payload.item_count,
+                instruction=payload.instruction,
+            )
+            max_tokens = 1600
 
-            else:
+        elif artifact_type == "revision_checklist":
+            messages = revision_checklist_messages(
+                source_text=trimmed_text,
+                language=payload.language,
+                item_count=payload.item_count,
+                instruction=payload.instruction,
+            )
+            max_tokens = 1400
+
+        elif artifact_type == "study_plan":
+            messages = study_plan_messages(
+                source_text=trimmed_text,
+                language=payload.language,
+                plan_days=payload.plan_days,
+                instruction=payload.instruction,
+            )
+            max_tokens = 1800
+
+        elif artifact_type == "mnemonic_set":
+            messages = mnemonic_messages(
+                source_text=trimmed_text,
+                language=payload.language,
+                item_count=payload.item_count,
+                instruction=payload.instruction,
+            )
+            max_tokens = 1400
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid artifact type",
+            )
+
+        await DeepSeekProvider.ensure_credit_available()
+
+        completion = await DeepSeekProvider.complete_json(
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=0.25,
+        )
+
+        title = payload.title or str(
+            completion.data.get("title", "AI Study Tool")
+        ).strip()
+
+        content_markdown = str(
+            completion.data.get("markdown", "")
+        ).strip()
+
+        if not content_markdown:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="AI did not return artifact content",
+            )
+
+        artifact = StudyArtifact(
+            user_id=current_user.id,
+            source_type=payload.source_type,
+            source_id=payload.source_id,
+            artifact_type=artifact_type,
+            title=title[:200],
+            content_markdown=content_markdown,
+            content_json=completion.data,
+            language=payload.language,
+            **context_ids,
+        )
+
+        return StudyToolsRepository.create_artifact(
+            db,
+            artifact,
+        )
+
+    @staticmethod
+    async def generate_mind_map(
+        db: Session,
+        payload: StudyArtifactGenerateRequest,
+        current_user: User,
+    ) -> StudyArtifact:
+        return await StudyToolsService._generate_artifact(
+            db,
+            payload,
+            current_user,
+            artifact_type="mind_map",
+        )
+
+    @staticmethod
+    async def generate_worksheet(
+        db: Session,
+        payload: StudyArtifactGenerateRequest,
+        current_user: User,
+    ) -> StudyArtifact:
+        return await StudyToolsService._generate_artifact(
+            db,
+            payload,
+            current_user,
+            artifact_type="worksheet",
+        )
+
+    @staticmethod
+    async def extract_formulas(
+        db: Session,
+        payload: StudyArtifactGenerateRequest,
+        current_user: User,
+    ) -> StudyArtifact:
+        return await StudyToolsService._generate_artifact(
+            db,
+            payload,
+            current_user,
+            artifact_type="formula_sheet",
+        )
+
+    @staticmethod
+    async def generate_important_questions(
+        db: Session,
+        payload: StudyArtifactGenerateRequest,
+        current_user: User,
+    ) -> StudyArtifact:
+        return await StudyToolsService._generate_artifact(
+            db,
+            payload,
+            current_user,
+            artifact_type="important_questions",
+        )
+
+    @staticmethod
+    def list_artifacts(
+        db: Session,
+        current_user: User,
+        artifact_type: str | None = None,
+    ) -> list[StudyArtifact]:
+        return StudyToolsRepository.list_artifacts(
+            db,
+            current_user.id,
+            artifact_type,
+        )
+
+    @staticmethod
+    def get_artifact(
+        db: Session,
+        artifact_id: uuid.UUID,
+        current_user: User,
+    ) -> StudyArtifact:
+        artifact = StudyToolsRepository.get_artifact_for_user(
+            db,
+            artifact_id,
+            current_user.id,
+        )
+
+        if not artifact:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Study artifact not found",
+            )
+
+        return artifact
+
+    @staticmethod
+    def update_artifact(
+        db: Session,
+        artifact_id: uuid.UUID,
+        payload: StudyArtifactUpdateRequest,
+        current_user: User,
+    ) -> StudyArtifact:
+        artifact = StudyToolsService.get_artifact(
+            db,
+            artifact_id,
+            current_user,
+        )
+
+        update_data = payload.model_dump(exclude_unset=True)
+
+        for field, value in update_data.items():
+            setattr(artifact, field, value)
+
+        return StudyToolsRepository.update_artifact(
+            db,
+            artifact,
+        )
+
+    @staticmethod
+    def delete_artifact(
+        db: Session,
+        artifact_id: uuid.UUID,
+        current_user: User,
+    ) -> dict:
+        artifact = StudyToolsService.get_artifact(
+            db,
+            artifact_id,
+            current_user,
+        )
+
+        artifact.is_deleted = True
+
+        StudyToolsRepository.update_artifact(
+            db,
+            artifact,
+        )
+
+        return {
+            "deleted_id": artifact_id,
+            "message": "Study artifact deleted successfully",
+        }
+    
+    @staticmethod
+    async def extract_key_points(
+        db: Session,
+        payload: StudyArtifactGenerateRequest,
+        current_user: User,
+    ) -> StudyArtifact:
+        return await StudyToolsService._generate_artifact(
+            db,
+            payload,
+            current_user,
+            artifact_type="key_points",
+        )
+
+    @staticmethod
+    async def generate_glossary(
+        db: Session,
+        payload: StudyArtifactGenerateRequest,
+        current_user: User,
+    ) -> StudyArtifact:
+        return await StudyToolsService._generate_artifact(
+            db,
+            payload,
+            current_user,
+            artifact_type="glossary",
+        )
+
+    @staticmethod
+    async def generate_revision_checklist(
+        db: Session,
+        payload: StudyArtifactGenerateRequest,
+        current_user: User,
+    ) -> StudyArtifact:
+        return await StudyToolsService._generate_artifact(
+            db,
+            payload,
+            current_user,
+            artifact_type="revision_checklist",
+        )
+
+    @staticmethod
+    async def generate_study_plan(
+        db: Session,
+        payload: StudyArtifactGenerateRequest,
+        current_user: User,
+    ) -> StudyArtifact:
+        return await StudyToolsService._generate_artifact(
+            db,
+            payload,
+            current_user,
+            artifact_type="study_plan",
+        )
+
+    @staticmethod
+    async def generate_mnemonics(
+        db: Session,
+        payload: StudyArtifactGenerateRequest,
+        current_user: User,
+    ) -> StudyArtifact:
+        return await StudyToolsService._generate_artifact(
+            db,
+            payload,
+            current_user,
+            artifact_type="mnemonic_set",
+        )
+    
+    @staticmethod
+    def _extract_pdf_text_from_upload(file: UploadFile) -> str:
+        if not file.filename or not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only PDF files are allowed",
+            )
+
+        try:
+            file_bytes = file.file.read()
+
+            if not file_bytes:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid artifact type",
+                    detail="Uploaded PDF is empty",
                 )
 
-            await DeepSeekProvider.ensure_credit_available()
+            extracted_pages: list[str] = []
 
-            completion = await DeepSeekProvider.complete_json(
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=0.25,
-            )
+            with pymupdf.open(stream=file_bytes, filetype="pdf") as pdf:
+                if pdf.page_count == 0:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="The PDF has no pages",
+                    )
 
-            title = payload.title or str(
-                completion.data.get("title", "AI Study Tool")
-            ).strip()
+                for page in pdf:
+                    text = page.get_text("text").strip()
 
-            content_markdown = str(
-                completion.data.get("markdown", "")
-            ).strip()
+                    if text:
+                        extracted_pages.append(text)
 
-            if not content_markdown:
+            extracted_text = "\n\n".join(extracted_pages).strip()
+
+            if not extracted_text:
                 raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail="AI did not return artifact content",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No selectable text found in this PDF",
                 )
 
-            artifact = StudyArtifact(
-                user_id=current_user.id,
-                source_type=payload.source_type,
-                source_id=payload.source_id,
-                artifact_type=artifact_type,
-                title=title[:200],
-                content_markdown=content_markdown,
-                content_json=completion.data,
-                language=payload.language,
-                **context_ids,
+            return extracted_text
+
+        except HTTPException:
+            raise
+
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not process uploaded PDF",
+            ) from exc
+
+        finally:
+            file.file.close()
+
+    @staticmethod
+    async def extract_key_points_from_pdf_upload(
+        db: Session,
+        file: UploadFile,
+        title: str | None,
+        language: str,
+        item_count: int,
+        instruction: str | None,
+        current_user: User,
+    ) -> StudyArtifact:
+        if language not in {"en", "bn"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Language must be 'en' or 'bn'",
             )
 
-            return StudyToolsRepository.create_artifact(
-                db,
-                artifact,
+        extracted_text = StudyToolsService._extract_pdf_text_from_upload(file)
+
+        await DeepSeekProvider.ensure_credit_available()
+
+        completion = await DeepSeekProvider.complete_json(
+            messages=key_points_messages(
+                source_text=StudyToolsService._trim_text(extracted_text),
+                language=language,
+                item_count=item_count,
+                instruction=instruction,
+            ),
+            max_tokens=1400,
+            temperature=0.2,
+        )
+
+        artifact_title = title or str(
+            completion.data.get("title", "PDF Key Points")
+        ).strip()
+
+        content_markdown = str(
+            completion.data.get("markdown", "")
+        ).strip()
+
+        if not content_markdown:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="AI did not return key points",
             )
 
-        @staticmethod
-        async def generate_mind_map(
-            db: Session,
-            payload: StudyArtifactGenerateRequest,
-            current_user: User,
-        ) -> StudyArtifact:
-            return await StudyToolsService._generate_artifact(
-                db,
-                payload,
-                current_user,
-                artifact_type="mind_map",
-            )
+        artifact = StudyArtifact(
+            user_id=current_user.id,
+            source_type="raw_text",
+            source_id=None,
+            artifact_type="key_points",
+            title=artifact_title[:200],
+            content_markdown=content_markdown,
+            content_json=completion.data,
+            language=language,
+            grade_id=None,
+            subject_id=None,
+            chapter_id=None,
+        )
 
-        @staticmethod
-        async def generate_worksheet(
-            db: Session,
-            payload: StudyArtifactGenerateRequest,
-            current_user: User,
-        ) -> StudyArtifact:
-            return await StudyToolsService._generate_artifact(
-                db,
-                payload,
-                current_user,
-                artifact_type="worksheet",
-            )
-
-        @staticmethod
-        async def extract_formulas(
-            db: Session,
-            payload: StudyArtifactGenerateRequest,
-            current_user: User,
-        ) -> StudyArtifact:
-            return await StudyToolsService._generate_artifact(
-                db,
-                payload,
-                current_user,
-                artifact_type="formula_sheet",
-            )
-
-        @staticmethod
-        async def generate_important_questions(
-            db: Session,
-            payload: StudyArtifactGenerateRequest,
-            current_user: User,
-        ) -> StudyArtifact:
-            return await StudyToolsService._generate_artifact(
-                db,
-                payload,
-                current_user,
-                artifact_type="important_questions",
-            )
-
-        @staticmethod
-        def list_artifacts(
-            db: Session,
-            current_user: User,
-            artifact_type: str | None = None,
-        ) -> list[StudyArtifact]:
-            return StudyToolsRepository.list_artifacts(
-                db,
-                current_user.id,
-                artifact_type,
-            )
-
-        @staticmethod
-        def get_artifact(
-            db: Session,
-            artifact_id: uuid.UUID,
-            current_user: User,
-        ) -> StudyArtifact:
-            artifact = StudyToolsRepository.get_artifact_for_user(
-                db,
-                artifact_id,
-                current_user.id,
-            )
-
-            if not artifact:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Study artifact not found",
-                )
-
-            return artifact
-
-        @staticmethod
-        def update_artifact(
-            db: Session,
-            artifact_id: uuid.UUID,
-            payload: StudyArtifactUpdateRequest,
-            current_user: User,
-        ) -> StudyArtifact:
-            artifact = StudyToolsService.get_artifact(
-                db,
-                artifact_id,
-                current_user,
-            )
-
-            update_data = payload.model_dump(exclude_unset=True)
-
-            for field, value in update_data.items():
-                setattr(artifact, field, value)
-
-            return StudyToolsRepository.update_artifact(
-                db,
-                artifact,
-            )
-
-        @staticmethod
-        def delete_artifact(
-            db: Session,
-            artifact_id: uuid.UUID,
-            current_user: User,
-        ) -> dict:
-            artifact = StudyToolsService.get_artifact(
-                db,
-                artifact_id,
-                current_user,
-            )
-
-            artifact.is_deleted = True
-
-            StudyToolsRepository.update_artifact(
-                db,
-                artifact,
-            )
-
-            return {
-                "deleted_id": artifact_id,
-                "message": "Study artifact deleted successfully",
-            }
+        return StudyToolsRepository.create_artifact(
+            db,
+            artifact,
+        )

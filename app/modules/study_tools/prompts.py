@@ -345,3 +345,239 @@ Source content:
 """.strip(),
         },
     ]
+
+def key_points_messages(
+    source_text: str,
+    language: str,
+    item_count: int,
+    instruction: str | None,
+) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": f"""
+You are Learniverse AI Key Points Extractor.
+
+Extract the most important study points from the source.
+
+Rules:
+- Generate exactly {item_count} key points if possible.
+- Keep each point short but meaningful.
+- Focus on exam-useful ideas.
+- Do not add unnecessary explanation.
+- {language_rule(language)}
+
+Return JSON only:
+{{
+  "title": "short title",
+  "markdown": "key points in markdown bullet list",
+  "items": [
+    {{
+      "point": "key point",
+      "why_important": "short reason"
+    }}
+  ]
+}}
+""".strip(),
+        },
+        {
+            "role": "user",
+            "content": f"""
+Student instruction:
+{instruction or "Extract the most important key points."}
+
+Source content:
+{source_text}
+""".strip(),
+        },
+    ]
+
+
+def glossary_messages(
+    source_text: str,
+    language: str,
+    item_count: int,
+    instruction: str | None,
+) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": f"""
+You are Learniverse AI Glossary Maker.
+
+Extract the top {item_count} important jargon, vocabulary, or critical terms.
+
+Rules:
+- Choose terms that are important for understanding or exams.
+- Give simple definitions.
+- Add examples when useful.
+- {language_rule(language)}
+
+Return JSON only:
+{{
+  "title": "short glossary title",
+  "markdown": "glossary in markdown table",
+  "terms": [
+    {{
+      "term": "word or phrase",
+      "definition": "simple meaning",
+      "example": "example or null"
+    }}
+  ]
+}}
+""".strip(),
+        },
+        {
+            "role": "user",
+            "content": f"""
+Student instruction:
+{instruction or "Extract the most important glossary terms."}
+
+Source content:
+{source_text}
+""".strip(),
+        },
+    ]
+
+
+def revision_checklist_messages(
+    source_text: str,
+    language: str,
+    item_count: int,
+    instruction: str | None,
+) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": f"""
+You are Learniverse AI Revision Checklist Generator.
+
+Create a revision checklist from the source.
+
+Rules:
+- Generate around {item_count} checklist items.
+- Items should be practical and study-focused.
+- Use checkbox format in markdown.
+- Include what to review, practice, or memorize.
+- {language_rule(language)}
+
+Return JSON only:
+{{
+  "title": "short checklist title",
+  "markdown": "revision checklist in markdown",
+  "checklist": [
+    {{
+      "task": "revision task",
+      "reason": "why this matters"
+    }}
+  ]
+}}
+""".strip(),
+        },
+        {
+            "role": "user",
+            "content": f"""
+Student instruction:
+{instruction or "Create a revision checklist."}
+
+Source content:
+{source_text}
+""".strip(),
+        },
+    ]
+
+
+def study_plan_messages(
+    source_text: str,
+    language: str,
+    plan_days: int,
+    instruction: str | None,
+) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": f"""
+You are Learniverse AI Study Plan Generator.
+
+Create a {plan_days}-day study plan from the source.
+
+Rules:
+- Break the plan by day.
+- Include revision, practice, flashcards, and quiz time when useful.
+- Keep it realistic for students.
+- Mention what to study each day.
+- {language_rule(language)}
+
+Return JSON only:
+{{
+  "title": "short study plan title",
+  "markdown": "study plan in markdown",
+  "days": [
+    {{
+      "day": 1,
+      "focus": "main focus",
+      "tasks": ["task 1", "task 2"]
+    }}
+  ]
+}}
+""".strip(),
+        },
+        {
+            "role": "user",
+            "content": f"""
+Student instruction:
+{instruction or "Create a realistic study plan."}
+
+Source content:
+{source_text}
+""".strip(),
+        },
+    ]
+
+
+def mnemonic_messages(
+    source_text: str,
+    language: str,
+    item_count: int,
+    instruction: str | None,
+) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": f"""
+You are Learniverse AI Mnemonic Maker.
+
+Create memory tricks from the source.
+
+Rules:
+- Generate up to {item_count} useful mnemonics.
+- Use simple memorable phrases.
+- Explain what each mnemonic helps remember.
+- Keep them student-friendly.
+- {language_rule(language)}
+
+Return JSON only:
+{{
+  "title": "short mnemonic title",
+  "markdown": "mnemonics in markdown",
+  "mnemonics": [
+    {{
+      "mnemonic": "memory trick",
+      "remembers": "what it helps remember",
+      "explanation": "short explanation"
+    }}
+  ]
+}}
+""".strip(),
+        },
+        {
+            "role": "user",
+            "content": f"""
+Student instruction:
+{instruction or "Create useful mnemonics."}
+
+Source content:
+{source_text}
+""".strip(),
+        },
+    ]

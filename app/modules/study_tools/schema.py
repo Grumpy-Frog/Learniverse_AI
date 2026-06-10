@@ -136,7 +136,13 @@ StudyArtifactType = Literal[
     "worksheet",
     "formula_sheet",
     "important_questions",
+    "key_points",
+    "glossary",
+    "revision_checklist",
+    "study_plan",
+    "mnemonic_set",
 ]
+
 
 
 class StudyArtifactGenerateRequest(BaseModel):
@@ -152,8 +158,16 @@ class StudyArtifactGenerateRequest(BaseModel):
     instruction: str | None = Field(default=None, max_length=1000)
     language: LanguageCode = "en"
 
-    item_count: int = Field(default=10, ge=3, le=30)
+    item_count: int = Field(default=10, ge=3, le=50)
     difficulty: Literal["easy", "medium", "hard", "mixed"] = "mixed"
+
+    plan_days: int = Field(default=7, ge=1, le=60)
+
+class InstantPdfArtifactRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    instruction: str | None = Field(default=None, max_length=1000)
+    language: LanguageCode = "en"
+    item_count: int = Field(default=10, ge=3, le=50)
 
 
 class StudyArtifactUpdateRequest(BaseModel):

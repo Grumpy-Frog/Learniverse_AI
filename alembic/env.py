@@ -20,7 +20,7 @@ from app.modules.simulation import model as simulation_model
 from app.modules.blog import model as blog_model
 from app.modules.custom_tutor import model as custom_tutor_model
 from app.modules.study_tools import model as study_tools_model
-from app.modules.study_tools.model import StudyArtifact
+
 
 
 # this is the Alembic Config object, which provides

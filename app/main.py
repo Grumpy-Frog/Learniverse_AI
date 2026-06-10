@@ -98,3 +98,8 @@ app.include_router(
     custom_tutor_router,
     prefix=settings.api_prefix,
 )
+
+app.include_router(
+    study_tools_router,
+    prefix=settings.api_prefix,
+)

@@ -27,7 +27,7 @@ from app.modules.study_tools.schema import (
 )
 
 from app.modules.study_tools.service import StudyToolsService
-
+from fastapi import File, Form, UploadFile
 
 router = APIRouter(
     prefix="/study-tools",
@@ -509,5 +509,114 @@ def delete_artifact(
     return StudyToolsService.delete_artifact(
         db,
         artifact_id,
+        current_user,
+    )
+
+@router.post(
+    "/key-points/generate",
+    response_model=StudyArtifactResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def extract_key_points(
+    payload: StudyArtifactGenerateRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> StudyArtifact:
+    return await StudyToolsService.extract_key_points(
+        db,
+        payload,
+        current_user,
+    )
+
+
+@router.post(
+    "/key-points/pdf-upload",
+    response_model=StudyArtifactResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def extract_key_points_from_pdf_upload(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    file: UploadFile = File(...),
+    title: str | None = Form(None),
+    language: str = Form("en"),
+    item_count: int = Form(10),
+    instruction: str | None = Form(None),
+) -> StudyArtifact:
+    return await StudyToolsService.extract_key_points_from_pdf_upload(
+        db=db,
+        file=file,
+        title=title,
+        language=language,
+        item_count=item_count,
+        instruction=instruction,
+        current_user=current_user,
+    )
+
+
+@router.post(
+    "/glossary/generate",
+    response_model=StudyArtifactResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_glossary(
+    payload: StudyArtifactGenerateRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> StudyArtifact:
+    return await StudyToolsService.generate_glossary(
+        db,
+        payload,
+        current_user,
+    )
+
+
+@router.post(
+    "/revision-checklists/generate",
+    response_model=StudyArtifactResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_revision_checklist(
+    payload: StudyArtifactGenerateRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> StudyArtifact:
+    return await StudyToolsService.generate_revision_checklist(
+        db,
+        payload,
+        current_user,
+    )
+
+
+@router.post(
+    "/study-plans/generate",
+    response_model=StudyArtifactResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_study_plan(
+    payload: StudyArtifactGenerateRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> StudyArtifact:
+    return await StudyToolsService.generate_study_plan(
+        db,
+        payload,
+        current_user,
+    )
+
+
+@router.post(
+    "/mnemonics/generate",
+    response_model=StudyArtifactResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_mnemonics(
+    payload: StudyArtifactGenerateRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> StudyArtifact:
+    return await StudyToolsService.generate_mnemonics(
+        db,
+        payload,
         current_user,
     )

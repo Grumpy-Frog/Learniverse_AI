@@ -13,8 +13,6 @@ from app.modules.study_tools.model import (
 )
 
 
-
-
 class StudyToolsRepository:
     @staticmethod
     def create_document(db: Session, document: StudyDocument) -> StudyDocument:
@@ -137,62 +135,62 @@ class StudyToolsRepository:
         db.commit()
         db.refresh(deck)
         return deck
-    
-        @staticmethod
-        def create_artifact(
-            db: Session,
-            artifact: StudyArtifact,
-        ) -> StudyArtifact:
-            db.add(artifact)
-            db.commit()
-            db.refresh(artifact)
 
-            return artifact
+    @staticmethod
+    def create_artifact(
+        db: Session,
+        artifact: StudyArtifact,
+    ) -> StudyArtifact:
+        db.add(artifact)
+        db.commit()
+        db.refresh(artifact)
 
-        @staticmethod
-        def get_artifact_for_user(
-            db: Session,
-            artifact_id: uuid.UUID,
-            user_id: uuid.UUID,
-        ) -> StudyArtifact | None:
-            return db.scalar(
-                select(StudyArtifact).where(
-                    StudyArtifact.id == artifact_id,
-                    StudyArtifact.user_id == user_id,
-                    StudyArtifact.is_deleted.is_(False),
-                )
-            )
+        return artifact
 
-        @staticmethod
-        def list_artifacts(
-            db: Session,
-            user_id: uuid.UUID,
-            artifact_type: str | None = None,
-        ) -> list[StudyArtifact]:
-            statement = select(StudyArtifact).where(
+    @staticmethod
+    def get_artifact_for_user(
+        db: Session,
+        artifact_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> StudyArtifact | None:
+        return db.scalar(
+            select(StudyArtifact).where(
+                StudyArtifact.id == artifact_id,
                 StudyArtifact.user_id == user_id,
                 StudyArtifact.is_deleted.is_(False),
             )
+        )
 
-            if artifact_type:
-                statement = statement.where(
-                    StudyArtifact.artifact_type == artifact_type,
-                )
+    @staticmethod
+    def list_artifacts(
+        db: Session,
+        user_id: uuid.UUID,
+        artifact_type: str | None = None,
+    ) -> list[StudyArtifact]:
+        statement = select(StudyArtifact).where(
+            StudyArtifact.user_id == user_id,
+            StudyArtifact.is_deleted.is_(False),
+        )
 
-            return list(
-                db.scalars(
-                    statement.order_by(StudyArtifact.updated_at.desc())
-                ).all()
+        if artifact_type:
+            statement = statement.where(
+                StudyArtifact.artifact_type == artifact_type,
             )
 
-        @staticmethod
-        def update_artifact(
-            db: Session,
-            artifact: StudyArtifact,
-        ) -> StudyArtifact:
-            artifact.updated_at = datetime.now(timezone.utc)
+        return list(
+            db.scalars(
+                statement.order_by(StudyArtifact.updated_at.desc())
+            ).all()
+        )
 
-            db.commit()
-            db.refresh(artifact)
+    @staticmethod
+    def update_artifact(
+        db: Session,
+        artifact: StudyArtifact,
+    ) -> StudyArtifact:
+        artifact.updated_at = datetime.now(timezone.utc)
 
-            return artifact
+        db.commit()
+        db.refresh(artifact)
+
+        return artifact
