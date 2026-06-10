@@ -18,6 +18,7 @@ from app.modules.diagnostics import model as diagnostics_model
 from app.modules.remediation import model as remediation_model
 from app.modules.simulation import model as simulation_model
 from app.modules.blog import model as blog_model
+from app.modules.inbox import model as inbox_model
 
 
 
